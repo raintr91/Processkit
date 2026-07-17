@@ -24,6 +24,25 @@ Profiles:
 - `docs`: process trace + impact review + deprecated redirect
 - `fe` / `be`: impact review only
 
+## Managed harness lifecycle
+
+`init` records only Processkit-managed harness assets and their installed hashes
+in `.processkit/install-manifest.json`. Switching profiles marks assets from the
+previous profile as stale; it does not delete them or manage shared registries
+and project maps.
+
+```bash
+processkit status --project-root /path/to/project
+processkit prune --project-root /path/to/project        # dry-run
+processkit prune --project-root /path/to/project --yes  # delete safe stale files
+```
+
+Prune deletes only stale files still matching their recorded hash. Customized
+files are retained. `platform-repos.json`, shared extract registries and any
+file absent from the Processkit install manifest are never prune targets.
+Unsupported manifest APIs and unsafe paths fail before harness writes or
+deletions.
+
 ## MCP tools
 
 - `business_process_validate`

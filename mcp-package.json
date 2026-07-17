@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "package": "@platform/processkit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "types": ["docs", "fe", "be"],
   "requires": [],
   "optional": ["codegraph", "@platform/hubdocs", "@platform/artifactgraph"],

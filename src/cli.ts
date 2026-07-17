@@ -1,7 +1,13 @@
 import path from 'node:path'
 import { packageRoot, packageVersion, resolveProjectRoot } from './config/project-root.js'
 import { installCursorMcp } from './install/cursor-mcp.js'
-import { installHarness, SKILLS_BY_TYPE, type ProcesskitType } from './install/harness.js'
+import {
+  harnessStatus,
+  installHarness,
+  pruneHarness,
+  SKILLS_BY_TYPE,
+  type ProcesskitType,
+} from './install/harness.js'
 import { mergeExtractRegistry } from './install/extract-registry.js'
 import { seedProjectMaps } from './install/project-maps.js'
 import { scopeUnifiedDiff, validateBusinessProcess, validateImpactReport } from './process/validate.js'
@@ -23,6 +29,8 @@ function usage(): never {
   console.log(`processkit ${packageVersion()}
 
   init --type=docs|fe|be [--target=cursor] [--project-root <path>] [--force] [--yes]
+  status [--project-root <path>]
+  prune [--project-root <path>] [--yes]    # dry-run by default
   process-validate --file <json|yaml> [--project-root <path>]
   impact-validate --file <json|yaml> [--project-root <path>]
   diff-scope --file <unified.diff>
@@ -62,10 +70,32 @@ async function main(): Promise<void> {
     for (const file of harness.written) console.log(`  wrote: ${file}`)
     for (const file of harness.unchanged) console.log(`  unchanged: ${file}`)
     for (const file of harness.conflicts) console.log(`  conflict: ${file}`)
+    for (const file of harness.stale) console.log(`  stale: ${file} (run processkit prune)`)
     if (type === 'docs') console.log(`updated: ${mergeExtractRegistry(root)}`)
     const maps = seedProjectMaps(root, type)
     console.log(`updated: ${maps.platformRepos}`)
     if (maps.legacyRepos) console.log(`seeded/preserved: ${maps.legacyRepos}`)
+    return
+  }
+  if (command === 'status') {
+    const status = harnessStatus(arg('--project-root'))
+    console.log(JSON.stringify(status, null, 2))
+    if (status.compat === 'fail') process.exit(1)
+    return
+  }
+  if (command === 'prune') {
+    const yes = has('--yes')
+    const result = pruneHarness({ projectRoot: arg('--project-root'), yes })
+    for (const file of result.removable) {
+      console.log(`  ${yes ? 'removed' : 'would remove'}: ${file}`)
+    }
+    for (const file of result.modified) console.log(`  keep modified: ${file}`)
+    if (!yes && result.removable.length) {
+      console.log('Dry-run only. Re-run with --yes to delete unmodified stale assets.')
+    }
+    console.log(
+      `Prune: ${result.removed.length} removed, ${result.removable.length} removable, ${result.modified.length} modified kept`,
+    )
     return
   }
   if (command === 'process-validate') {

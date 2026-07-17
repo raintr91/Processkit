@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 
 import {
@@ -9,7 +19,11 @@ import {
   validateBusinessProcess,
   validateImpactReport,
 } from '../dist/process/validate.js'
-import { installHarness } from '../dist/install/harness.js'
+import {
+  harnessStatus,
+  installHarness,
+  pruneHarness,
+} from '../dist/install/harness.js'
 import { seedProjectMaps } from '../dist/install/project-maps.js'
 import { installCursorMcp } from '../dist/install/cursor-mcp.js'
 
@@ -101,6 +115,197 @@ test('FE profile syncs impact review only', () => {
   seedProjectMaps(root, 'fe')
   const platform = JSON.parse(readFileSync(path.join(root, 'platform-repos.json'), 'utf8'))
   assert.deepEqual(platform.harness.profiles.fe.skills, ['business-impact-review'])
+})
+
+test('profile switches mark only removed managed assets stale', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-switch-'))
+  installHarness({ projectRoot: root, type: 'docs' })
+  const result = installHarness({ projectRoot: root, type: 'fe' })
+  const impact = path.join(root, '.cursor/skills/business-impact-review/SKILL.md')
+
+  assert.ok(result.stale.length > 0)
+  assert.ok(result.stale.every((file) => file !== impact))
+  assert.ok(result.stale.some((file) => file.includes('business-process-trace')))
+
+  const status = harnessStatus(root)
+  assert.equal(status.type, 'fe')
+  assert.equal(status.compat, 'ok')
+  assert.ok(status.healthy.includes(impact))
+  assert.deepEqual(status.stale.sort(), result.stale.sort())
+})
+
+test('prune is dry-run by default and deletes only hash-matching stale files', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-prune-'))
+  installHarness({ projectRoot: root, type: 'docs' })
+  const switched = installHarness({ projectRoot: root, type: 'be' })
+  const modified = switched.stale.find((file) => file.includes('business-process-trace'))
+  assert.ok(modified)
+  writeFileSync(modified, `${readFileSync(modified, 'utf8')}\ncustomized\n`)
+
+  const platform = path.join(root, 'platform-repos.json')
+  const registry = path.join(root, '.cursor/extracts/extract-registry.json')
+  const unmanaged = path.join(root, '.cursor/skills/user-owned/SKILL.md')
+  mkdirSync(path.dirname(unmanaged), { recursive: true })
+  writeFileSync(platform, 'keep platform map\n')
+  writeFileSync(registry, 'keep shared registry\n')
+  writeFileSync(unmanaged, 'keep unmanaged\n')
+  const manifestFile = path.join(root, '.processkit/install-manifest.json')
+  const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'))
+  for (const [key, content] of [
+    ['platform-repos.json', 'keep platform map\n'],
+    ['.cursor/extracts/extract-registry.json', 'keep shared registry\n'],
+  ]) {
+    manifest.files[key] = {
+      source: 'must-never-be-pruned',
+      sha256: createHash('sha256').update(content).digest('hex'),
+      stale: true,
+    }
+  }
+  writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`)
+
+  const dryRun = pruneHarness({ projectRoot: root })
+  assert.equal(dryRun.removed.length, 0)
+  assert.ok(dryRun.modified.includes(modified))
+  assert.ok(dryRun.removable.length > 0)
+  assert.ok(dryRun.removable.every(existsSync))
+  assert.ok(dryRun.removable.every((file) => file !== platform && file !== registry))
+
+  const pruned = pruneHarness({ projectRoot: root, yes: true })
+  assert.ok(pruned.removed.length > 0)
+  assert.equal(existsSync(modified), true)
+  assert.equal(readFileSync(platform, 'utf8'), 'keep platform map\n')
+  assert.equal(readFileSync(registry, 'utf8'), 'keep shared registry\n')
+  assert.equal(readFileSync(unmanaged, 'utf8'), 'keep unmanaged\n')
+  assert.ok(pruned.removed.every((file) => !existsSync(file)))
+})
+
+test('manifest path containment blocks writes and deletion outside project root', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-contained-'))
+  const outside = path.join(path.dirname(root), `${path.basename(root)}-outside.txt`)
+  writeFileSync(outside, 'outside\n')
+  mkdirSync(path.join(root, '.processkit'), { recursive: true })
+  writeFileSync(
+    path.join(root, '.processkit/install-manifest.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      package: '@platform/processkit',
+      packageVersion: '0.2.0',
+      type: 'docs',
+      toolApi: 1,
+      harnessApi: 1,
+      installedAt: new Date().toISOString(),
+      files: {
+        [`../${path.basename(outside)}`]: {
+          source: 'harness/docs/skills/example/SKILL.md',
+          sha256: '0'.repeat(64),
+          stale: true,
+        },
+      },
+    })}\n`,
+  )
+
+  assert.throws(() => pruneHarness({ projectRoot: root, yes: true }), /escapes project root/)
+  assert.throws(() => installHarness({ projectRoot: root, type: 'fe' }), /escapes project root/)
+  assert.equal(readFileSync(outside, 'utf8'), 'outside\n')
+  assert.equal(existsSync(path.join(root, '.cursor')), false)
+})
+
+test('manifest containment rejects managed paths through outside symlinks', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-symlink-'))
+  const outside = mkdtempSync(path.join(os.tmpdir(), 'processkit-symlink-outside-'))
+  mkdirSync(path.join(root, '.cursor'), { recursive: true })
+  symlinkSync(outside, path.join(root, '.cursor/skills'))
+  mkdirSync(path.join(root, '.processkit'), { recursive: true })
+  writeFileSync(
+    path.join(root, '.processkit/install-manifest.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      package: '@platform/processkit',
+      packageVersion: '0.2.0',
+      type: 'docs',
+      toolApi: 1,
+      harnessApi: 1,
+      installedAt: new Date().toISOString(),
+      files: {
+        '.cursor/skills/escaped/SKILL.md': {
+          source: 'harness/docs/skills/escaped/SKILL.md',
+          sha256: '0'.repeat(64),
+          stale: true,
+        },
+      },
+    })}\n`,
+  )
+
+  assert.throws(
+    () => pruneHarness({ projectRoot: root, yes: true }),
+    /escapes project root through a symlink/,
+  )
+  assert.throws(
+    () => installHarness({ projectRoot: root, type: 'docs', force: true }),
+    /escapes project root through a symlink/,
+  )
+  assert.deepEqual(readdirSync(outside), [])
+})
+
+test('incompatible manifest API fails before harness writes', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-compat-'))
+  installHarness({ projectRoot: root, type: 'docs' })
+  const manifestFile = path.join(root, '.processkit/install-manifest.json')
+  const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'))
+  manifest.harnessApi = 999
+  writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`)
+  const before = readFileSync(
+    path.join(root, '.cursor/skills/business-impact-review/SKILL.md'),
+    'utf8',
+  )
+
+  assert.equal(harnessStatus(root).compat, 'fail')
+  assert.throws(
+    () => installHarness({ projectRoot: root, type: 'fe', force: true }),
+    /Unsupported Processkit install manifest API/,
+  )
+  assert.throws(
+    () => pruneHarness({ projectRoot: root, yes: true }),
+    /Unsupported Processkit install manifest API/,
+  )
+  assert.equal(
+    readFileSync(path.join(root, '.cursor/skills/business-impact-review/SKILL.md'), 'utf8'),
+    before,
+  )
+})
+
+test('CLI status and prune require --yes for deletion', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-cli-'))
+  installHarness({ projectRoot: root, type: 'docs' })
+  installHarness({ projectRoot: root, type: 'fe' })
+  const cli = path.resolve('bin/processkit.mjs')
+  const run = (args) =>
+    spawnSync(process.execPath, [cli, ...args, '--project-root', root], {
+      cwd: path.resolve('.'),
+      encoding: 'utf8',
+    })
+
+  const status = run(['status'])
+  assert.equal(status.status, 0, status.stderr)
+  assert.equal(JSON.parse(status.stdout).type, 'fe')
+
+  const dryRun = run(['prune'])
+  assert.equal(dryRun.status, 0, dryRun.stderr)
+  assert.match(dryRun.stdout, /would remove|Dry-run only/)
+  assert.ok(harnessStatus(root).stale.length > 0)
+
+  const deleteRun = run(['prune', '--yes'])
+  assert.equal(deleteRun.status, 0, deleteRun.stderr)
+  assert.match(deleteRun.stdout, /removed:/)
+  assert.equal(harnessStatus(root).stale.length, 0)
+})
+
+test('lifecycle APIs are exported from the package entry point', async () => {
+  const api = await import('../dist/index.js')
+  assert.equal(typeof api.harnessStatus, 'function')
+  assert.equal(typeof api.pruneHarness, 'function')
+  assert.equal(api.PROCESSKIT_TOOL_API, 1)
+  assert.equal(api.PROCESSKIT_HARNESS_API, 1)
 })
 
 for (const optionalServers of [
