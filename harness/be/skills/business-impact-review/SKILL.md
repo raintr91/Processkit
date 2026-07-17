@@ -63,5 +63,5 @@ start. For each unavailable optional MCP, use targeted local search/read and
 count successful file reads plus exact raw bytes read into context. After that
 optional's fallback completes, emit exactly one
 `processkit.missing-optional` JSON event for the `runId` + optional pair using
-`.cursor/schemas/missing-optional-event.schema.json`; deduplicate retries. Report only
+`.cursor/schemas/processkit/missing-optional-event.schema.json`; deduplicate retries. Report only
 actual `fileReads` and `contextBytes`, never invented token claims.

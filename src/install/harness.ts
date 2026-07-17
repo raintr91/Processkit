@@ -243,7 +243,7 @@ export function installHarness(opts: {
   }))
   sources.push({
     source: path.join(packageRoot(), 'schemas', 'missing-optional-event.schema.json'),
-    targetRel: '.cursor/schemas/missing-optional-event.schema.json',
+    targetRel: '.cursor/schemas/processkit/missing-optional-event.schema.json',
   })
 
   for (const { source, targetRel } of sources) {

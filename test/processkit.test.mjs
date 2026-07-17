@@ -107,7 +107,14 @@ test('docs init assets and portable maps', () => {
   assert.equal(harness.conflicts.length, 0)
   assert.ok(harness.written.some((file) => file.includes('business-process-trace')))
   assert.ok(
-    harness.written.some((file) => file.endsWith('missing-optional-event.schema.json')),
+    harness.written.some((file) =>
+      file.endsWith(path.join('.cursor', 'schemas', 'processkit', 'missing-optional-event.schema.json')),
+    ),
+  )
+  assert.ok(
+    !harness.written.some((file) =>
+      file.endsWith(path.join('.cursor', 'schemas', 'missing-optional-event.schema.json')),
+    ),
   )
   seedProjectMaps(root, 'docs')
   const platform = JSON.parse(readFileSync(path.join(root, 'platform-repos.json'), 'utf8'))
@@ -322,8 +329,65 @@ test('lifecycle APIs are exported from the package entry point', async () => {
 test('package manifests stay version-aligned', () => {
   const pkg = JSON.parse(readFileSync(path.resolve('package.json'), 'utf8'))
   const mcpPkg = JSON.parse(readFileSync(path.resolve('mcp-package.json'), 'utf8'))
-  assert.equal(pkg.version, '0.3.0')
+  const server = readFileSync(path.resolve('src/mcp/server.ts'), 'utf8')
+  assert.equal(pkg.version, '0.3.1')
   assert.equal(mcpPkg.version, pkg.version)
+  assert.match(server, new RegExp(`version: '${pkg.version.replaceAll('.', '\\.')}'`))
+})
+
+test('0.3.0 unnamespaced schema becomes stale and prune-safe on re-init', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-schema-ns-'))
+  const schemaContent = readFileSync(
+    path.resolve('schemas/missing-optional-event.schema.json'),
+    'utf8',
+  )
+  const oldRel = '.cursor/schemas/missing-optional-event.schema.json'
+  const newRel = '.cursor/schemas/processkit/missing-optional-event.schema.json'
+  const oldTarget = path.join(root, ...oldRel.split('/'))
+  const newTarget = path.join(root, ...newRel.split('/'))
+
+  mkdirSync(path.join(root, '.processkit'), { recursive: true })
+  mkdirSync(path.dirname(oldTarget), { recursive: true })
+  writeFileSync(oldTarget, schemaContent)
+  writeFileSync(
+    path.join(root, '.processkit/install-manifest.json'),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        package: '@platform/processkit',
+        packageVersion: '0.3.0',
+        type: 'docs',
+        toolApi: 1,
+        harnessApi: 1,
+        installedAt: new Date().toISOString(),
+        files: {
+          [oldRel]: {
+            source: 'schemas/missing-optional-event.schema.json',
+            sha256: createHash('sha256').update(schemaContent).digest('hex'),
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  )
+
+  const result = installHarness({ projectRoot: root, type: 'docs' })
+  assert.ok(existsSync(newTarget))
+  assert.ok(result.written.includes(newTarget))
+  assert.ok(result.stale.includes(oldTarget))
+  assert.equal(existsSync(oldTarget), true)
+
+  const status = harnessStatus(root)
+  assert.equal(status.packageVersionInstalled, '0.3.1')
+  assert.ok(status.stale.includes(oldTarget))
+  assert.ok(status.healthy.includes(newTarget))
+
+  const pruned = pruneHarness({ projectRoot: root, yes: true })
+  assert.ok(pruned.removed.includes(oldTarget))
+  assert.equal(existsSync(oldTarget), false)
+  assert.equal(existsSync(newTarget), true)
+  assert.equal(harnessStatus(root).stale.includes(oldTarget), false)
 })
 
 test('CodeGraph fixture proves deterministic accelerator and fallback metrics', () => {
