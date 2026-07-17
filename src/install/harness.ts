@@ -237,11 +237,18 @@ export function installHarness(opts: {
     stale: [],
   }
   const files: InstallManifest['files'] = {}
+  const sources = walk(sourceRoot).map((source) => ({
+    source,
+    targetRel: path.join('.cursor', path.relative(sourceRoot, source)).split(path.sep).join('/'),
+  }))
+  sources.push({
+    source: path.join(packageRoot(), 'schemas', 'missing-optional-event.schema.json'),
+    targetRel: '.cursor/schemas/missing-optional-event.schema.json',
+  })
 
-  for (const source of walk(sourceRoot)) {
+  for (const { source, targetRel } of sources) {
     const rel = path.relative(sourceRoot, source)
     if (rel === path.join('extracts', 'extract-registry.processkit.json')) continue
-    const targetRel = path.join('.cursor', rel).split(path.sep).join('/')
     const target = containedTarget(root, targetRel)
     const content = readFileSync(source, 'utf8')
     files[targetRel] = {

@@ -1,0 +1,4 @@
+# Targeted route-to-symbol map used when CodeGraph is unavailable.
+POST /checkout -> CheckoutService.submit -> corpus/checkout-service.ts
+POST /refund -> RefundService.submit -> corpus/refund-service.ts
+POST /invoice -> InvoiceService.create -> corpus/invoice-service.ts

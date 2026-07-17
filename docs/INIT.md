@@ -18,4 +18,8 @@ The command:
 3. merges only Processkit skill IDs into `platform-repos.json`;
 4. for docs, seeds empty portable legacy maps if missing.
 
+Existing MCP server entries, including a preconfigured CodeGraph server, are
+preserved. Init does not probe or require CodeGraph, so Processkit-only and
+Processkit+CodeGraph installs are deterministic offline.
+
 It never writes `legacy-repos.local.json`.

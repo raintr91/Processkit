@@ -21,3 +21,18 @@ export type {
   ProcesskitType,
   PruneResult,
 } from './install/harness.js'
+export {
+  MissingOptionalEventEmitter,
+  OPTIONAL_FALLBACK_EVENT,
+  OPTIONAL_FALLBACK_SCHEMA_VERSION,
+  PROCESSKIT_PACKAGE,
+  ReadMeasurement,
+  validateMissingOptionalEvent,
+} from './optional/fallback-evidence.js'
+export type {
+  MissingOptionalEvent,
+  MissingOptionalInput,
+  OptionalFallbackMode,
+  OptionalFallbackReason,
+  ReadMetrics,
+} from './optional/fallback-evidence.js'

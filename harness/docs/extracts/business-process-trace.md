@@ -25,6 +25,14 @@ Systems: use repo/product ids from evidence (`portal` | `api` | legacy checkouts
 
 Resolve roots: `legacy/project-config.md` (progressive — needed ids only, no full JSON dump)
 
+## Missing optional accelerators
+
+CodeGraph and other MCP accelerators are optional. Continue with targeted local
+search/read. For each run/optional pair, emit one
+`processkit.missing-optional` event after fallback completes. Measure successful
+file reads and exact raw context bytes; deduplicate retries and do not estimate
+tokens. Contract: `.cursor/schemas/missing-optional-event.schema.json`.
+
 ## Example shape (verify in code)
 
 ```markdown

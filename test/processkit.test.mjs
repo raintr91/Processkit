@@ -26,6 +26,11 @@ import {
 } from '../dist/install/harness.js'
 import { seedProjectMaps } from '../dist/install/project-maps.js'
 import { installCursorMcp } from '../dist/install/cursor-mcp.js'
+import {
+  MissingOptionalEventEmitter,
+  ReadMeasurement,
+  validateMissingOptionalEvent,
+} from '../dist/optional/fallback-evidence.js'
 
 test('business process validates evidence and references', () => {
   const result = validateBusinessProcess({
@@ -101,6 +106,9 @@ test('docs init assets and portable maps', () => {
   const harness = installHarness({ projectRoot: root, type: 'docs' })
   assert.equal(harness.conflicts.length, 0)
   assert.ok(harness.written.some((file) => file.includes('business-process-trace')))
+  assert.ok(
+    harness.written.some((file) => file.endsWith('missing-optional-event.schema.json')),
+  )
   seedProjectMaps(root, 'docs')
   const platform = JSON.parse(readFileSync(path.join(root, 'platform-repos.json'), 'utf8'))
   assert.ok(platform.harness.profiles.docs.skills.includes('business-process-trace'))
@@ -306,6 +314,91 @@ test('lifecycle APIs are exported from the package entry point', async () => {
   assert.equal(typeof api.pruneHarness, 'function')
   assert.equal(api.PROCESSKIT_TOOL_API, 1)
   assert.equal(api.PROCESSKIT_HARNESS_API, 1)
+  assert.equal(typeof api.ReadMeasurement, 'function')
+  assert.equal(typeof api.MissingOptionalEventEmitter, 'function')
+  assert.equal(typeof api.validateMissingOptionalEvent, 'function')
+})
+
+test('package manifests stay version-aligned', () => {
+  const pkg = JSON.parse(readFileSync(path.resolve('package.json'), 'utf8'))
+  const mcpPkg = JSON.parse(readFileSync(path.resolve('mcp-package.json'), 'utf8'))
+  assert.equal(pkg.version, '0.3.0')
+  assert.equal(mcpPkg.version, pkg.version)
+})
+
+test('CodeGraph fixture proves deterministic accelerator and fallback metrics', () => {
+  const fixture = path.resolve('test/fixtures/codegraph-fallback')
+  const corpus = path.join(fixture, 'corpus')
+  const lookup = 'CheckoutService.submit'
+
+  const acceleratorReads = new ReadMeasurement()
+  const index = JSON.parse(
+    acceleratorReads.readText(path.join(fixture, 'accelerator-index.json')),
+  )
+  const acceleratorResult = acceleratorReads.readText(path.join(fixture, index[lookup]))
+
+  const targetedReads = new ReadMeasurement()
+  const routeMap = targetedReads.readText(path.join(fixture, 'routes.map'))
+  const targetMatch = routeMap.match(
+    new RegExp(`${lookup.replace('.', '\\.')} -> (corpus/[^\\s]+)`),
+  )
+  assert.ok(targetMatch)
+  const targetedResult = targetedReads.readText(path.join(fixture, targetMatch[1]))
+
+  const fullReads = new ReadMeasurement()
+  let fullResult = ''
+  for (const name of readdirSync(corpus).sort()) {
+    const content = fullReads.readText(path.join(corpus, name))
+    if (content.includes('class CheckoutService')) fullResult = content
+  }
+
+  assert.equal(acceleratorResult, targetedResult)
+  assert.equal(acceleratorResult, fullResult)
+  assert.deepEqual(acceleratorReads.snapshot(), { fileReads: 2, contextBytes: 162 })
+  assert.deepEqual(targetedReads.snapshot(), { fileReads: 2, contextBytes: 377 })
+  assert.deepEqual(fullReads.snapshot(), { fileReads: 6, contextBytes: 638 })
+  assert.ok(
+    acceleratorReads.snapshot().contextBytes <=
+      targetedReads.snapshot().contextBytes * 0.5,
+    'accelerator must use at least 50% fewer context bytes than targeted fallback',
+  )
+  assert.ok(
+    acceleratorReads.snapshot().contextBytes <= fullReads.snapshot().contextBytes * 0.3,
+    'accelerator must use at least 70% fewer context bytes than full fallback',
+  )
+})
+
+test('missing optional event validates measured metrics and deduplicates run/optional', () => {
+  const fixture = path.resolve('test/fixtures/codegraph-fallback')
+  const reads = new ReadMeasurement()
+  reads.readText(path.join(fixture, 'routes.map'))
+  reads.readText(path.join(fixture, 'corpus/checkout-service.ts'))
+
+  const emitter = new MissingOptionalEventEmitter()
+  const input = {
+    runId: 'fixture-run-1',
+    optional: 'codegraph',
+    reason: 'unavailable',
+    fallback: 'targeted-local-search',
+    metrics: reads.snapshot(),
+  }
+  const event = emitter.emit(input)
+  assert.deepEqual(event, {
+    schemaVersion: '1.0.0',
+    event: 'processkit.missing-optional',
+    package: '@platform/processkit',
+    ...input,
+  })
+  assert.deepEqual(validateMissingOptionalEvent(event), { ok: true, errors: [] })
+  assert.equal(emitter.emit(input), null)
+  assert.ok(emitter.emit({ ...input, optional: 'hubdocs' }))
+
+  const schema = JSON.parse(
+    readFileSync(path.resolve('schemas/missing-optional-event.schema.json'), 'utf8'),
+  )
+  assert.equal(schema.additionalProperties, false)
+  assert.deepEqual(schema.required, Object.keys(event))
+  assert.equal(schema.properties.metrics.additionalProperties, false)
 })
 
 for (const optionalServers of [
@@ -330,6 +423,9 @@ for (const optionalServers of [
       Object.keys(config.mcpServers).filter((id) => id !== 'processkit'),
       Object.keys(optionalServers),
     )
+    for (const [id, entry] of Object.entries(optionalServers)) {
+      assert.deepEqual(config.mcpServers[id], entry)
+    }
     assert.ok(config.mcpServers.processkit)
   })
 }

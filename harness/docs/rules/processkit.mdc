@@ -10,4 +10,7 @@ alwaysApply: false
 - `/flow-trace`: deprecated redirect to `/business-process-trace`.
 
 CodeGraph, Hubdocs and ArtifactGraph are optional accelerators. Missing tools
-must fall back to targeted search/model analysis and explicit residual gaps.
+must fall back to targeted local search/model analysis and explicit residual
+gaps. Per run/optional pair, count actual successful file reads and raw context
+bytes, then emit exactly one `processkit.missing-optional` event conforming to
+`.cursor/schemas/missing-optional-event.schema.json`. Never estimate token savings.

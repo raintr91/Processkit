@@ -1,6 +1,6 @@
 {
   "name": "@platform/processkit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local MCP: business process tracing and code-impact review harness",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,6 +17,7 @@
     "dist",
     "docs",
     "harness",
+    "schemas",
     "install.sh",
     "install.ps1",
     "mcp-package.json",

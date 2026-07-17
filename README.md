@@ -7,7 +7,10 @@ Standalone MCP/harness package for:
 - deprecated `/flow-trace` redirect
 
 Optional accelerators: CodeGraph, Hubdocs and ArtifactGraph. Processkit works
-without them through targeted repository search/model analysis.
+without them through targeted repository search/model analysis. Missing
+optionals produce one schema-validated evidence event per run/optional with
+actual file-read and context-byte metrics; see
+[`docs/OPTIONAL-ACCELERATORS.md`](docs/OPTIONAL-ACCELERATORS.md).
 
 ## Install (local checkout)
 
@@ -48,6 +51,9 @@ deletions.
 - `business_process_validate`
 - `business_impact_validate`
 - `business_diff_scope`
+
+Processkit has no runtime dependency on CodeGraph. `init` preserves an existing
+CodeGraph MCP entry and does not require the server to be live.
 
 ## Portability
 

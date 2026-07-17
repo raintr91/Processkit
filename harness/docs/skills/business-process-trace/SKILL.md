@@ -32,7 +32,7 @@ Do **not** invent missing hops. Curated product journeys stay under **`/journey`
 
 ```text
 if CodeGraph available: symbol/caller/call-chain lookup
-else: targeted Grep/Read; unresolved hop → compact cloudPromptSlice
+else: targeted local search/read; unresolved hop → compact model evidence slice
 
 if Hubdocs available: resolve CMP/CTR/FLOW IDs and doc paths
 else: repository path conventions/search
@@ -40,6 +40,13 @@ else: repository path conventions/search
 if ArtifactGraph available: parity/tag slice when contract/registry is touched
 else: model review from scoped evidence
 ```
+
+At run start, assign one stable `runId`. For each unavailable optional MCP,
+continue the fallback and count successful file reads plus exact raw bytes read
+into context. After that optional's fallback completes, emit exactly one
+`processkit.missing-optional` JSON event for the `runId` + optional pair using
+`.cursor/schemas/missing-optional-event.schema.json`. Deduplicate retries. Report
+`fileReads` and `contextBytes`; never invent token counts or vague savings.
 
 ## Aliases
 
