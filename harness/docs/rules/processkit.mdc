@@ -1,0 +1,13 @@
+---
+description: Processkit — business process trace and impact review (opt-in)
+alwaysApply: false
+---
+
+# Processkit
+
+- `/business-process-trace`: observed brownfield process through code/evidence.
+- `/business-impact-review`: read-only vertical × horizontal blast-radius review.
+- `/flow-trace`: deprecated redirect to `/business-process-trace`.
+
+CodeGraph, Hubdocs and ArtifactGraph are optional accelerators. Missing tools
+must fall back to targeted search/model analysis and explicit residual gaps.

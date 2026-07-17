@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "package": "@platform/processkit",
+  "bundles": {
+    "business-process-trace": [
+      ".cursor/extracts/business-process-trace.md"
+    ],
+    "flow-trace": [
+      ".cursor/extracts/business-process-trace.md"
+    ]
+  }
+}

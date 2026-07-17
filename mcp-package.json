@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "package": "@platform/processkit",
+  "version": "0.1.0",
+  "types": ["docs", "fe", "be"],
+  "requires": [],
+  "optional": ["codegraph", "@platform/hubdocs", "@platform/artifactgraph"],
+  "tools": [
+    "business_process_validate",
+    "business_impact_validate",
+    "business_diff_scope"
+  ],
+  "skillsByType": {
+    "docs": [
+      "business-process-trace",
+      "business-impact-review",
+      "flow-trace"
+    ],
+    "fe": ["business-impact-review"],
+    "be": ["business-impact-review"]
+  },
+  "compatibility": {
+    "node": ">=22",
+    "toolApi": 1,
+    "harnessApi": 1
+  }
+}

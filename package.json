@@ -1,0 +1,44 @@
+{
+  "name": "@platform/processkit",
+  "version": "0.1.0",
+  "description": "Local MCP: business process tracing and code-impact review harness",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "processkit": "./bin/processkit.mjs",
+    "processkit-mcp": "./bin/processkit-mcp.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raintr91/Processkit.git"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "docs",
+    "harness",
+    "install.sh",
+    "install.ps1",
+    "mcp-package.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "mcp": "node bin/processkit-mcp.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.9.0"
+  }
+}
