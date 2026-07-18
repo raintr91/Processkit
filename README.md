@@ -57,6 +57,7 @@ CodeGraph MCP entry and does not require the server to be live.
 
 ## Portability
 
-`init --type=docs` seeds empty `legacy-repos.json` and
-`legacy-repos.example.json` only when missing. Machine checkout roots belong in
-ignored `legacy-repos.local.json`; the package never writes them.
+Processkit does not write project maps (`platform-repos*.json`,
+`legacy-repos*.json`); they are Platform DNA-owned and optional. Machine
+checkout roots belong in ignored `legacy-repos.local.json`; the package never
+writes them.

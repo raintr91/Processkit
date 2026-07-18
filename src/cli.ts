@@ -9,7 +9,6 @@ import {
   type ProcesskitType,
 } from './install/harness.js'
 import { mergeExtractRegistry } from './install/extract-registry.js'
-import { seedProjectMaps } from './install/project-maps.js'
 import { scopeUnifiedDiff, validateBusinessProcess, validateImpactReport } from './process/validate.js'
 import { readFileSync } from 'node:fs'
 import { parse } from 'yaml'
@@ -72,9 +71,6 @@ async function main(): Promise<void> {
     for (const file of harness.conflicts) console.log(`  conflict: ${file}`)
     for (const file of harness.stale) console.log(`  stale: ${file} (run processkit prune)`)
     if (type === 'docs') console.log(`updated: ${mergeExtractRegistry(root)}`)
-    const maps = seedProjectMaps(root, type)
-    console.log(`updated: ${maps.platformRepos}`)
-    if (maps.legacyRepos) console.log(`seeded/preserved: ${maps.legacyRepos}`)
     return
   }
   if (command === 'status') {

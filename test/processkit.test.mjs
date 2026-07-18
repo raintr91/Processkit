@@ -24,7 +24,6 @@ import {
   installHarness,
   pruneHarness,
 } from '../dist/install/harness.js'
-import { seedProjectMaps } from '../dist/install/project-maps.js'
 import { installCursorMcp } from '../dist/install/cursor-mcp.js'
 import {
   MissingOptionalEventEmitter,
@@ -116,20 +115,17 @@ test('docs init assets and portable maps', () => {
       file.endsWith(path.join('.cursor', 'schemas', 'missing-optional-event.schema.json')),
     ),
   )
-  seedProjectMaps(root, 'docs')
-  const platform = JSON.parse(readFileSync(path.join(root, 'platform-repos.json'), 'utf8'))
-  assert.ok(platform.harness.profiles.docs.skills.includes('business-process-trace'))
-  assert.ok(platform.harness.profiles.docs.skills.includes('flow-trace'))
-  const legacy = JSON.parse(readFileSync(path.join(root, 'legacy-repos.json'), 'utf8'))
-  assert.deepEqual(legacy.projects, {})
+  // Processkit never writes Platform DNA-owned project maps.
+  assert.equal(existsSync(path.join(root, 'platform-repos.json')), false)
+  assert.equal(existsSync(path.join(root, 'legacy-repos.json')), false)
 })
 
 test('FE profile syncs impact review only', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-fe-'))
-  installHarness({ projectRoot: root, type: 'fe' })
-  seedProjectMaps(root, 'fe')
-  const platform = JSON.parse(readFileSync(path.join(root, 'platform-repos.json'), 'utf8'))
-  assert.deepEqual(platform.harness.profiles.fe.skills, ['business-impact-review'])
+  const harness = installHarness({ projectRoot: root, type: 'fe' })
+  assert.ok(harness.written.some((file) => file.includes('business-impact-review')))
+  assert.ok(!harness.written.some((file) => file.includes('business-process-trace')))
+  assert.equal(existsSync(path.join(root, 'platform-repos.json')), false)
 })
 
 test('profile switches mark only removed managed assets stale', () => {

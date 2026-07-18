@@ -14,9 +14,11 @@ deprecated `/flow-trace` redirect. `fe`/`be` sync only impact review.
 The command:
 
 1. merges a machine-local Processkit MCP entry into `.cursor/mcp.json`;
-2. safely syncs profile-owned harness assets;
-3. merges only Processkit skill IDs into `platform-repos.json`;
-4. for docs, seeds empty portable legacy maps if missing.
+2. safely syncs profile-owned harness assets.
+
+Processkit never writes `platform-repos*.json` or `legacy-repos*.json`; project
+maps are Platform DNA-owned and optional. Legacy evidence roots stay in the
+member-owned `legacy-repos.local.json`.
 
 Existing MCP server entries, including a preconfigured CodeGraph server, are
 preserved. Init does not probe or require CodeGraph, so Processkit-only and
