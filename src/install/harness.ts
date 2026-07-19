@@ -11,10 +11,13 @@ import {
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { packageRoot, packageVersion } from '../config/project-root.js'
+import { unmergeExtractRegistry } from './extract-registry.js'
+import { forgetInstall, recordInstall } from './ledger.js'
 
 export type ProcesskitType = 'docs' | 'fe' | 'be'
 export const PROCESSKIT_TOOL_API = 1
 export const PROCESSKIT_HARNESS_API = 1
+export const INSTALL_MANIFEST_PATH = '.processkit/install-manifest.json'
 const NEVER_PRUNE = new Set([
   'platform-repos.json',
   '.cursor/extracts/extract-registry.json',
@@ -71,6 +74,17 @@ export interface PruneResult {
   removed: string[]
 }
 
+export interface HarnessUninstallResult {
+  manifest: string
+  dryRun: boolean
+  wouldDelete: string[]
+  deleted: string[]
+  preservedModified: string[]
+  missing: string[]
+  manifestRemoved: boolean
+  registry?: string
+}
+
 function hash(content: string): string {
   return createHash('sha256').update(content).digest('hex')
 }
@@ -87,7 +101,25 @@ function walk(root: string): string[] {
 }
 
 function manifestFile(root: string): string {
-  return path.join(root, '.processkit', 'install-manifest.json')
+  return path.join(root, ...INSTALL_MANIFEST_PATH.split('/'))
+}
+
+function pruneEmptyDirs(root: string, files: string[]): void {
+  const candidates = new Set<string>()
+  for (const file of files) {
+    let directory = path.dirname(file)
+    while (directory !== root && directory.startsWith(`${root}${path.sep}`)) {
+      candidates.add(directory)
+      directory = path.dirname(directory)
+    }
+  }
+  for (const directory of [...candidates].sort((a, b) => b.length - a.length)) {
+    try {
+      if (readdirSync(directory).length === 0) rmSync(directory)
+    } catch {
+      // Directory is non-empty, missing, or not removable.
+    }
+  }
 }
 
 function containedTarget(root: string, targetKey: string): string {
@@ -291,6 +323,7 @@ export function installHarness(opts: {
   }
   mkdirSync(path.dirname(manifestFile(root)), { recursive: true })
   writeFileSync(manifestFile(root), `${JSON.stringify(manifest, null, 2)}\n`)
+  recordInstall(root)
   return result
 }
 
@@ -324,5 +357,67 @@ export function pruneHarness(opts: {
   if (opts.yes && result.removed.length) {
     writeFileSync(manifestFile(root), `${JSON.stringify(previous, null, 2)}\n`)
   }
+  return result
+}
+
+/**
+ * Remove all Processkit-managed harness assets, preserving files changed after
+ * install. Shared registry content is unmerged by Processkit-owned bundle key.
+ */
+export function uninstallHarness(opts: {
+  projectRoot?: string
+  yes?: boolean
+} = {}): HarnessUninstallResult {
+  const root = path.resolve(opts.projectRoot ?? process.cwd())
+  const previous = readManifest(root)
+  assertCompatible(previous, manifestFile(root))
+  const dryRun = !opts.yes
+  const result: HarnessUninstallResult = {
+    manifest: manifestFile(root),
+    dryRun,
+    wouldDelete: [],
+    deleted: [],
+    preservedModified: [],
+    missing: [],
+    manifestRemoved: false,
+  }
+  if (!previous) {
+    if (!dryRun) forgetInstall(root)
+    return result
+  }
+
+  for (const [targetKey, meta] of Object.entries(previous.files)) {
+    const normalizedKey = targetKey.replaceAll('\\', '/')
+    if (NEVER_PRUNE.has(normalizedKey)) continue
+    const target = containedTarget(root, targetKey)
+    if (!existsSync(target)) {
+      result.missing.push(target)
+      continue
+    }
+    if (hash(readFileSync(target, 'utf8')) !== meta.sha256) {
+      result.preservedModified.push(target)
+      continue
+    }
+    if (dryRun) {
+      result.wouldDelete.push(target)
+    } else {
+      rmSync(target)
+      result.deleted.push(target)
+    }
+  }
+
+  const registry = unmergeExtractRegistry(root, dryRun)
+  if (registry) result.registry = registry
+  if (dryRun) {
+    result.wouldDelete.push(manifestFile(root))
+    return result
+  }
+
+  if (existsSync(manifestFile(root))) {
+    rmSync(manifestFile(root))
+    result.manifestRemoved = true
+  }
+  forgetInstall(root)
+  pruneEmptyDirs(root, [...result.deleted, manifestFile(root)])
   return result
 }

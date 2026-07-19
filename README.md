@@ -32,12 +32,16 @@ Profiles:
 `init` records only Processkit-managed harness assets and their installed hashes
 in `.processkit/install-manifest.json`. Switching profiles marks assets from the
 previous profile as stale; it does not delete them or manage shared registries
-and project maps.
+and project maps. It also records the destination in the XDG install ledger at
+`$XDG_STATE_HOME/processkit/installs.json` (or
+`~/.local/state/processkit/installs.json`).
 
 ```bash
 processkit status --project-root /path/to/project
 processkit prune --project-root /path/to/project        # dry-run
 processkit prune --project-root /path/to/project --yes  # delete safe stale files
+processkit deinit                                       # current repo + local MCP
+processkit uninstall                                    # every repo + MCP + CLI
 ```
 
 Prune deletes only stale files still matching their recorded hash. Customized
@@ -45,6 +49,26 @@ files are retained. `platform-repos.json`, shared extract registries and any
 file absent from the Processkit install manifest are never prune targets.
 Unsupported manifest APIs and unsafe paths fail before harness writes or
 deletions.
+
+Without `--yes`, `deinit` and `uninstall` are dry-runs in non-interactive use;
+in a TTY they preview and ask for confirmation. `deinit` is the inverse of
+`init` for the current destination: it removes hash-matching managed harness
+files and local Processkit MCP wiring, preserves and reports modified files,
+safely removes only Processkit bundle keys from the shared extract registry,
+and forgets the destination from the ledger.
+
+`processkit uninstall` can run from anywhere. It defaults to global/all:
+every destination in the ledger, each local Processkit MCP entry, the global
+Cursor MCP entry, the CLI shims and `~/.processkit`. For installs created before
+the ledger existed:
+
+```bash
+processkit uninstall --discover ~/workspace --yes
+```
+
+Advanced `--scope=repo|all-repos|mcp-local|mcp-global|cli|all`,
+`--project-root`, and `--keep-mcp` filters remain available. `prune` remains
+stale-only and never performs a full deinitialization.
 
 ## MCP tools
 

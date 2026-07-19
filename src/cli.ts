@@ -1,16 +1,20 @@
 import path from 'node:path'
+import os from 'node:os'
 import { packageRoot, packageVersion, resolveProjectRoot } from './config/project-root.js'
-import { installCursorMcp } from './install/cursor-mcp.js'
+import { installCursorMcp, uninstallCursorMcp } from './install/cursor-mcp.js'
 import {
   harnessStatus,
   installHarness,
   pruneHarness,
   SKILLS_BY_TYPE,
+  uninstallHarness,
   type ProcesskitType,
 } from './install/harness.js'
 import { mergeExtractRegistry } from './install/extract-registry.js'
+import { discoverInstalls, ledgerPath, readLedger, removeLedger } from './install/ledger.js'
 import { scopeUnifiedDiff, validateBusinessProcess, validateImpactReport } from './process/validate.js'
-import { readFileSync } from 'node:fs'
+import { lstatSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { createInterface } from 'node:readline/promises'
 import { parse } from 'yaml'
 
 function arg(name: string): string | undefined {
@@ -30,6 +34,8 @@ function usage(): never {
   init --type=docs|fe|be [--target=cursor] [--project-root <path>] [--force] [--yes]
   status [--project-root <path>]
   prune [--project-root <path>] [--yes]    # dry-run by default
+  deinit [--project-root <path>] [--yes]   # current repo harness + local MCP
+  uninstall [--discover <dir>] [--yes]     # all repos + local/global MCP + CLI
   process-validate --file <json|yaml> [--project-root <path>]
   impact-validate --file <json|yaml> [--project-root <path>]
   diff-scope --file <unified.diff>
@@ -46,6 +52,215 @@ function loadFile(file: string, root?: string): unknown {
   const absolute = path.resolve(resolveProjectRoot(root), file)
   const body = readFileSync(absolute, 'utf8')
   return absolute.endsWith('.json') ? JSON.parse(body) : parse(body)
+}
+
+type UninstallScope = 'repo' | 'all-repos' | 'mcp-local' | 'mcp-global' | 'cli' | 'all'
+
+const UNINSTALL_SCOPES: UninstallScope[] = [
+  'repo',
+  'all-repos',
+  'mcp-local',
+  'mcp-global',
+  'cli',
+  'all',
+]
+
+interface UninstallFlags {
+  yes: boolean
+  keepMcp: boolean
+  projectRoot?: string
+  discoverDir?: string
+}
+
+function cliLayout(): { installDir: string; binDir: string } {
+  return {
+    installDir: process.env.PROCESSKIT_INSTALL_DIR
+      ? path.resolve(process.env.PROCESSKIT_INSTALL_DIR)
+      : path.join(os.homedir(), '.processkit'),
+    binDir: process.env.PROCESSKIT_BIN_DIR
+      ? path.resolve(process.env.PROCESSKIT_BIN_DIR)
+      : path.join(os.homedir(), '.local', 'bin'),
+  }
+}
+
+function lexists(file: string): boolean {
+  try {
+    lstatSync(file)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function realOrSelf(file: string): string {
+  try {
+    return realpathSync(file)
+  } catch {
+    return file
+  }
+}
+
+function removeCli(dryRun: boolean): {
+  removed: string[]
+  wouldRemove: string[]
+  skipped: string[]
+} {
+  const { installDir, binDir } = cliLayout()
+  const removed: string[] = []
+  const wouldRemove: string[] = []
+  const skipped: string[] = []
+  const cwd = realOrSelf(process.cwd())
+  const targets = [
+    path.join(binDir, 'processkit'),
+    path.join(binDir, 'processkit-mcp'),
+    path.join(binDir, 'processkit.cmd'),
+    path.join(binDir, 'processkit-mcp.cmd'),
+    installDir,
+  ]
+  for (const target of targets) {
+    if (!lexists(target)) continue
+    if (target === installDir && realOrSelf(target) === cwd) {
+      skipped.push(`${target} (current working directory; remove manually)`)
+      continue
+    }
+    if (dryRun) {
+      wouldRemove.push(target)
+      continue
+    }
+    try {
+      rmSync(target, { recursive: true, force: true })
+      removed.push(target)
+    } catch (error) {
+      skipped.push(`${target} (${error instanceof Error ? error.message : String(error)})`)
+    }
+  }
+  return { removed, wouldRemove, skipped }
+}
+
+function repoTargets(flags: UninstallFlags): string[] {
+  const repos = new Set(readLedger())
+  if (flags.discoverDir) {
+    for (const repo of discoverInstalls(flags.discoverDir)) repos.add(repo)
+  }
+  return [...repos]
+}
+
+function runUninstallScope(scope: UninstallScope, flags: UninstallFlags): void {
+  const root = path.resolve(flags.projectRoot ?? process.cwd())
+  const doHarness = (projectRoot: string): void => {
+    console.log(`repo: ${projectRoot}`)
+    const result = uninstallHarness({ projectRoot, yes: flags.yes })
+    for (const file of result.wouldDelete) console.log(`  would delete: ${file}`)
+    for (const file of result.deleted) console.log(`  deleted: ${file}`)
+    for (const file of result.preservedModified) console.log(`  preserve modified: ${file}`)
+    for (const file of result.missing) console.log(`  already missing: ${file}`)
+    if (result.registry) console.log(`  registry: ${result.registry}`)
+    if (result.manifestRemoved) console.log(`  manifest removed: ${result.manifest}`)
+  }
+  const doMcp = (location: 'local' | 'global', projectRoot?: string): void => {
+    const result = uninstallCursorMcp({
+      projectRoot,
+      location,
+      yes: flags.yes,
+    })
+    if (result.absent) {
+      console.log(`  mcp (${location}): no processkit entry`)
+    } else {
+      console.log(`  ${flags.yes ? 'unwired' : 'would unwire'} (${location}): ${result.path}`)
+    }
+  }
+  const doCli = (): void => {
+    const result = removeCli(!flags.yes)
+    for (const file of result.wouldRemove) console.log(`  would remove: ${file}`)
+    for (const file of result.removed) console.log(`  removed: ${file}`)
+    for (const file of result.skipped) console.log(`  skip: ${file}`)
+  }
+
+  switch (scope) {
+    case 'repo':
+      doHarness(root)
+      if (!flags.keepMcp) doMcp('local', root)
+      break
+    case 'all-repos': {
+      const repos = repoTargets(flags)
+      if (!repos.length) console.log('  (no registered repos; try --discover <dir>)')
+      for (const repo of repos) {
+        doHarness(repo)
+        if (!flags.keepMcp) doMcp('local', repo)
+      }
+      break
+    }
+    case 'mcp-local':
+      doMcp('local', root)
+      break
+    case 'mcp-global':
+      doMcp('global')
+      break
+    case 'cli':
+      doCli()
+      break
+    case 'all': {
+      for (const repo of repoTargets(flags)) {
+        doHarness(repo)
+        doMcp('local', repo)
+      }
+      doMcp('global')
+      doCli()
+      if (flags.yes) {
+        if (removeLedger()) console.log(`  ledger removed: ${ledgerPath()}`)
+      } else {
+        console.log(`  would remove ledger: ${ledgerPath()}`)
+      }
+      break
+    }
+  }
+}
+
+async function runUninstall(defaultScope: 'repo' | 'all'): Promise<void> {
+  const flags: UninstallFlags = {
+    yes: has('--yes'),
+    keepMcp: has('--keep-mcp'),
+    projectRoot: arg('--project-root'),
+    discoverDir: arg('--discover'),
+  }
+  let scope: UninstallScope = defaultScope
+  if (defaultScope === 'all') {
+    const scopeArg = arg('--scope')
+    if (scopeArg) {
+      if (!UNINSTALL_SCOPES.includes(scopeArg as UninstallScope)) {
+        throw new Error(`--scope must be one of: ${UNINSTALL_SCOPES.join(', ')}`)
+      }
+      scope = scopeArg as UninstallScope
+    }
+  }
+
+  const interactive = process.stdin.isTTY && process.stdout.isTTY && !flags.yes
+  if (interactive) {
+    console.log(`\nPreview (${scope}):`)
+    runUninstallScope(scope, { ...flags, yes: false })
+    const prompt = createInterface({ input: process.stdin, output: process.stdout })
+    const answer = await prompt.question(
+      defaultScope === 'repo'
+        ? '\nApply processkit deinit for this repo? [y/N] '
+        : '\nApply global processkit uninstall (all repos + MCP + CLI)? [y/N] ',
+    )
+    prompt.close()
+    if (!/^y(?:es)?$/i.test(answer.trim())) {
+      console.log('Cancelled.')
+      return
+    }
+    console.log(`\nApplying (${scope}):`)
+    runUninstallScope(scope, { ...flags, yes: true })
+    console.log(`\nUninstalled (${scope}).`)
+    return
+  }
+
+  runUninstallScope(scope, flags)
+  console.log(
+    flags.yes
+      ? `\nUninstalled (${scope}).`
+      : `\nDry-run (${scope}) — pass --yes to apply.`,
+  )
 }
 
 async function main(): Promise<void> {
@@ -92,6 +307,14 @@ async function main(): Promise<void> {
     console.log(
       `Prune: ${result.removed.length} removed, ${result.removable.length} removable, ${result.modified.length} modified kept`,
     )
+    return
+  }
+  if (command === 'deinit') {
+    await runUninstall('repo')
+    return
+  }
+  if (command === 'uninstall') {
+    await runUninstall('all')
     return
   }
   if (command === 'process-validate') {

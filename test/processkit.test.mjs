@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -23,13 +24,23 @@ import {
   harnessStatus,
   installHarness,
   pruneHarness,
+  uninstallHarness,
 } from '../dist/install/harness.js'
-import { installCursorMcp } from '../dist/install/cursor-mcp.js'
+import { installCursorMcp, uninstallCursorMcp } from '../dist/install/cursor-mcp.js'
+import { mergeExtractRegistry } from '../dist/install/extract-registry.js'
+import {
+  discoverInstalls,
+  ledgerPath,
+  readLedger,
+} from '../dist/install/ledger.js'
 import {
   MissingOptionalEventEmitter,
   ReadMeasurement,
   validateMissingOptionalEvent,
 } from '../dist/optional/fallback-evidence.js'
+
+// Lifecycle tests must never write the member's real XDG state ledger.
+process.env.PROCESSKIT_STATE_DIR = mkdtempSync(path.join(os.tmpdir(), 'processkit-state-'))
 
 test('business process validates evidence and references', () => {
   const result = validateBusinessProcess({
@@ -190,6 +201,84 @@ test('prune is dry-run by default and deletes only hash-matching stale files', (
   assert.ok(pruned.removed.every((file) => !existsSync(file)))
 })
 
+test('uninstall is dry-run by default and preserves modified managed files', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-uninstall-'))
+  const installed = installHarness({ projectRoot: root, type: 'docs' })
+  const modified = installed.written.find((file) => file.endsWith('SKILL.md'))
+  assert.ok(modified)
+  writeFileSync(modified, `${readFileSync(modified, 'utf8')}\nmember change\n`)
+
+  const dryRun = uninstallHarness({ projectRoot: root })
+  assert.equal(dryRun.dryRun, true)
+  assert.equal(dryRun.deleted.length, 0)
+  assert.ok(dryRun.wouldDelete.length > 0)
+  assert.equal(existsSync(path.join(root, '.processkit/install-manifest.json')), true)
+
+  const applied = uninstallHarness({ projectRoot: root, yes: true })
+  assert.equal(applied.manifestRemoved, true)
+  assert.ok(applied.preservedModified.includes(modified))
+  assert.equal(existsSync(modified), true)
+  assert.equal(existsSync(path.join(root, '.processkit/install-manifest.json')), false)
+  for (const file of applied.deleted) assert.equal(existsSync(file), false)
+})
+
+test('uninstall safely unmerges only Processkit shared registry bundles', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-registry-'))
+  installHarness({ projectRoot: root, type: 'docs' })
+  const registry = mergeExtractRegistry(root)
+  const document = JSON.parse(readFileSync(registry, 'utf8'))
+  document.bundles['other-toolkit'] = ['other.md']
+  document.memberSetting = true
+  writeFileSync(registry, `${JSON.stringify(document, null, 2)}\n`)
+
+  const result = uninstallHarness({ projectRoot: root, yes: true })
+  assert.match(result.registry, /removed 2 Processkit bundle key/)
+  assert.equal(existsSync(registry), true)
+  const after = JSON.parse(readFileSync(registry, 'utf8'))
+  assert.deepEqual(after.bundles, { 'other-toolkit': ['other.md'] })
+  assert.equal(after.memberSetting, true)
+})
+
+test('install ledger records, discovers, and forgets harness destinations', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-ledger-'))
+  const nested = path.join(root, 'nested', 'destination')
+  mkdirSync(nested, { recursive: true })
+  installHarness({ projectRoot: nested, type: 'fe' })
+
+  assert.ok(readLedger().includes(nested))
+  assert.ok(discoverInstalls(root).includes(nested))
+  uninstallHarness({ projectRoot: nested, yes: true })
+  assert.equal(readLedger().includes(nested), false)
+  const persisted = JSON.parse(readFileSync(ledgerPath(), 'utf8'))
+  assert.equal(persisted.repos.includes(nested), false)
+})
+
+test('MCP uninstall removes only Processkit wiring', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-unwire-'))
+  mkdirSync(path.join(root, '.cursor'), { recursive: true })
+  const file = path.join(root, '.cursor/mcp.json')
+  writeFileSync(
+    file,
+    `${JSON.stringify({
+      mcpServers: {
+        processkit: { command: 'processkit-mcp' },
+        keep: { command: 'keep-mcp' },
+      },
+      memberSetting: true,
+    }, null, 2)}\n`,
+  )
+
+  const dryRun = uninstallCursorMcp({ projectRoot: root })
+  assert.equal(dryRun.removed, true)
+  assert.ok(JSON.parse(readFileSync(file, 'utf8')).mcpServers.processkit)
+
+  uninstallCursorMcp({ projectRoot: root, yes: true })
+  const after = JSON.parse(readFileSync(file, 'utf8'))
+  assert.equal('processkit' in after.mcpServers, false)
+  assert.deepEqual(after.mcpServers.keep, { command: 'keep-mcp' })
+  assert.equal(after.memberSetting, true)
+})
+
 test('manifest path containment blocks writes and deletion outside project root', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-contained-'))
   const outside = path.join(path.dirname(root), `${path.basename(root)}-outside.txt`)
@@ -311,10 +400,92 @@ test('CLI status and prune require --yes for deletion', () => {
   assert.equal(harnessStatus(root).stale.length, 0)
 })
 
+test('CLI deinit is repo-local and uninstall defaults to global all', () => {
+  const cli = path.resolve('bin/processkit.mjs')
+  const home = mkdtempSync(path.join(os.tmpdir(), 'processkit-home-'))
+  const state = mkdtempSync(path.join(os.tmpdir(), 'processkit-cli-state-'))
+  const installDir = path.join(home, '.processkit')
+  const binDir = path.join(home, '.local', 'bin')
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-cli-lifecycle-'))
+  const env = {
+    ...process.env,
+    HOME: home,
+    PROCESSKIT_STATE_DIR: state,
+    PROCESSKIT_INSTALL_DIR: installDir,
+    PROCESSKIT_BIN_DIR: binDir,
+  }
+
+  const init = spawnSync(
+    process.execPath,
+    [cli, 'init', '--type=docs', '--project-root', root, '--yes'],
+    { encoding: 'utf8', env },
+  )
+  assert.equal(init.status, 0, init.stderr)
+  const deinit = spawnSync(
+    process.execPath,
+    [cli, 'deinit', '--project-root', root, '--yes'],
+    { encoding: 'utf8', env },
+  )
+  assert.equal(deinit.status, 0, deinit.stderr)
+  assert.match(deinit.stdout, /Uninstalled \(repo\)/)
+  assert.equal(existsSync(path.join(root, '.processkit/install-manifest.json')), false)
+  const localMcp = JSON.parse(readFileSync(path.join(root, '.cursor/mcp.json'), 'utf8'))
+  assert.equal('processkit' in localMcp.mcpServers, false)
+
+  const second = mkdtempSync(path.join(os.tmpdir(), 'processkit-cli-global-'))
+  const secondInit = spawnSync(
+    process.execPath,
+    [cli, 'init', '--type=fe', '--project-root', second, '--yes'],
+    { encoding: 'utf8', env },
+  )
+  assert.equal(secondInit.status, 0, secondInit.stderr)
+  mkdirSync(path.join(home, '.cursor'), { recursive: true })
+  writeFileSync(
+    path.join(home, '.cursor/mcp.json'),
+    `${JSON.stringify({
+      mcpServers: {
+        processkit: { command: 'processkit-mcp' },
+        keep: { command: 'keep' },
+      },
+    }, null, 2)}\n`,
+  )
+  mkdirSync(installDir, { recursive: true })
+  mkdirSync(binDir, { recursive: true })
+  writeFileSync(path.join(installDir, 'marker'), 'installed\n')
+  writeFileSync(path.join(binDir, 'processkit'), 'shim\n')
+  writeFileSync(path.join(binDir, 'processkit-mcp'), 'shim\n')
+
+  const preview = spawnSync(process.execPath, [cli, 'uninstall'], {
+    encoding: 'utf8',
+    env,
+  })
+  assert.equal(preview.status, 0, preview.stderr)
+  assert.match(preview.stdout, /Dry-run \(all\)/)
+  assert.equal(existsSync(installDir), true)
+  assert.equal(existsSync(path.join(second, '.processkit/install-manifest.json')), true)
+
+  const uninstall = spawnSync(process.execPath, [cli, 'uninstall', '--yes'], {
+    encoding: 'utf8',
+    env,
+  })
+  assert.equal(uninstall.status, 0, uninstall.stderr)
+  assert.match(uninstall.stdout, /Uninstalled \(all\)/)
+  assert.equal(existsSync(path.join(second, '.processkit/install-manifest.json')), false)
+  assert.equal(existsSync(installDir), false)
+  assert.equal(existsSync(path.join(binDir, 'processkit')), false)
+  assert.equal(existsSync(path.join(state, 'installs.json')), false)
+  const globalMcp = JSON.parse(readFileSync(path.join(home, '.cursor/mcp.json'), 'utf8'))
+  assert.equal('processkit' in globalMcp.mcpServers, false)
+  assert.deepEqual(globalMcp.mcpServers.keep, { command: 'keep' })
+  rmSync(home, { recursive: true, force: true })
+})
+
 test('lifecycle APIs are exported from the package entry point', async () => {
   const api = await import('../dist/index.js')
   assert.equal(typeof api.harnessStatus, 'function')
   assert.equal(typeof api.pruneHarness, 'function')
+  assert.equal(typeof api.uninstallHarness, 'function')
+  assert.equal(typeof api.discoverInstalls, 'function')
   assert.equal(api.PROCESSKIT_TOOL_API, 1)
   assert.equal(api.PROCESSKIT_HARNESS_API, 1)
   assert.equal(typeof api.ReadMeasurement, 'function')
