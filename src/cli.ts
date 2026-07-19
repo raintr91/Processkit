@@ -1,7 +1,15 @@
 import path from 'node:path'
 import os from 'node:os'
 import { packageRoot, packageVersion, resolveProjectRoot } from './config/project-root.js'
-import { installCursorMcp, uninstallCursorMcp } from './install/cursor-mcp.js'
+import { uninstallCursorMcp } from './install/cursor-mcp.js'
+import {
+  detectAgents,
+  installAgents,
+  parseTargets,
+  uninstallAgents,
+  type AgentId,
+} from './install/agents.js'
+import { runInitWizard } from './install/wizard.js'
 import {
   harnessStatus,
   installHarness,
@@ -31,7 +39,8 @@ function has(name: string): boolean {
 function usage(): never {
   console.log(`processkit ${packageVersion()}
 
-  init --type=docs|fe|be [--target=cursor] [--project-root <path>] [--force] [--yes]
+  init [--type=docs|fe|be] [--target=csv|auto|all] [--project-root <path>] [--force] [--yes]
+       # no flags → TTY wizard: agents → lane (docs|fe|be); MCP always local at cwd
   status [--project-root <path>]
   prune [--project-root <path>] [--yes]    # dry-run by default
   deinit [--project-root <path>] [--yes]   # current repo harness + local MCP
@@ -158,15 +167,23 @@ function runUninstallScope(scope: UninstallScope, flags: UninstallFlags): void {
     if (result.manifestRemoved) console.log(`  manifest removed: ${result.manifest}`)
   }
   const doMcp = (location: 'local' | 'global', projectRoot?: string): void => {
-    const result = uninstallCursorMcp({
-      projectRoot,
-      location,
-      yes: flags.yes,
-    })
+    if (location === 'local') {
+      // Unwire every agent config written at init (cursor, claude, codex, …).
+      const agents = uninstallAgents({ projectRoot, yes: flags.yes })
+      if (!agents.removed.length) {
+        console.log('  mcp (local): no processkit entry')
+        return
+      }
+      for (const entry of agents.removed) {
+        console.log(`  ${flags.yes ? 'unwired' : 'would unwire'} (local): ${entry}`)
+      }
+      return
+    }
+    const result = uninstallCursorMcp({ location: 'global', yes: flags.yes })
     if (result.absent) {
-      console.log(`  mcp (${location}): no processkit entry`)
+      console.log('  mcp (global): no processkit entry')
     } else {
-      console.log(`  ${flags.yes ? 'unwired' : 'would unwire'} (${location}): ${result.path}`)
+      console.log(`  ${flags.yes ? 'unwired' : 'would unwire'} (global): ${result.path}`)
     }
   }
   const doCli = (): void => {
@@ -272,14 +289,35 @@ async function main(): Promise<void> {
     return
   }
   if (command === 'init') {
-    const type = (arg('--type') ?? 'docs') as ProcesskitType
-    if (!['docs', 'fe', 'be'].includes(type)) throw new Error('--type must be docs | fe | be')
     const root = resolveProjectRoot(arg('--project-root'))
-    const target = arg('--target') ?? 'cursor'
-    if (target === 'cursor' || target === 'all') {
-      const mcp = installCursorMcp(root)
-      console.log(`${mcp.written ? 'wrote' : 'unchanged'}: ${mcp.path}`)
+    const typeFlag = arg('--type') as ProcesskitType | undefined
+    if (typeFlag && !['docs', 'fe', 'be'].includes(typeFlag)) {
+      throw new Error('--type must be docs | fe | be')
     }
+    const targetFlag = arg('--target')
+    const interactive =
+      !has('--yes') &&
+      !typeFlag &&
+      !targetFlag &&
+      Boolean(process.stdin.isTTY && process.stdout.isTTY)
+
+    let agents: AgentId[]
+    let type: ProcesskitType
+    if (interactive) {
+      // Wizard order is fixed: agents → lane; Processkit has no tech step.
+      const wizard = await runInitWizard({ cwd: root })
+      agents = wizard.agents
+      type = wizard.type
+    } else {
+      agents = parseTargets(targetFlag ?? 'auto', detectAgents(root))
+      type = typeFlag ?? 'docs'
+    }
+
+    const mcp = installAgents({ projectRoot: root, agents })
+    console.log(`Wired processkit → ${mcp.targets.join(', ') || '(none)'} (local at ${root})`)
+    for (const written of mcp.written) console.log(`  ${written.agent}: ${written.path}`)
+    for (const skip of mcp.skipped) console.log(`  skip: ${skip}`)
+
     const harness = installHarness({ projectRoot: root, type, force: has('--force') })
     for (const file of harness.written) console.log(`  wrote: ${file}`)
     for (const file of harness.unchanged) console.log(`  unchanged: ${file}`)

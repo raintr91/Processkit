@@ -25,6 +25,25 @@ export type {
   HarnessUninstallResult,
 } from './install/harness.js'
 export {
+  AGENT_IDS,
+  AGENT_LABEL,
+  agentConfigPath,
+  buildMcpEntry,
+  detectAgents,
+  installAgents,
+  parseTargets,
+  uninstallAgents,
+} from './install/agents.js'
+export type {
+  AgentId,
+  InstallAgentsOptions,
+  InstallAgentsResult,
+  UninstallAgentsOptions,
+  UninstallAgentsResult,
+} from './install/agents.js'
+export { runInitWizard } from './install/wizard.js'
+export type { WizardPrompts, WizardResult } from './install/wizard.js'
+export {
   discoverInstalls,
   forgetInstall,
   ledgerPath,

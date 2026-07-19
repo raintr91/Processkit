@@ -1,11 +1,30 @@
 # `processkit init`
 
-Run from the target repository:
+Run from the target repository — no flags needed:
+
+```bash
+processkit init
+```
+
+In a TTY this opens a short wizard, always in this order:
+
+1. **Agents** — checkbox (↑↓ · Space · Enter); detected agents are
+   pre-checked. Supported: Claude Code, Cursor, Codex CLI, opencode, Hermes,
+   Gemini CLI, Antigravity, Kiro, Kilo.
+2. **Lane** — `docs` | `fe` | `be`.
+3. Tech — Processkit has none, so there is no third prompt.
+
+There is no location question: every selected agent gets a project-local MCP
+config under the current repo (`.cursor/mcp.json`, `.claude.json`,
+`.codex/config.toml`, `.hermes/config.yaml`, `.gemini/config/mcp_config.json`,
+…), then the lane harness is installed.
+
+CI keeps the long flags (any flag or `--yes` skips the wizard):
 
 ```bash
 processkit init --type=docs --target=cursor --yes
-processkit init --type=fe --target=cursor --yes
-processkit init --type=be --target=cursor --yes
+processkit init --type=fe --target=cursor,codex --yes
+processkit init --type=be --target=auto --yes   # auto = detected agents
 ```
 
 `docs` syncs `/business-process-trace`, `/business-impact-review` and the
@@ -13,7 +32,8 @@ deprecated `/flow-trace` redirect. `fe`/`be` sync only impact review.
 
 The command:
 
-1. merges a machine-local Processkit MCP entry into `.cursor/mcp.json`;
+1. merges a Processkit MCP entry into each selected agent's project-local
+   config at the repo root;
 2. safely syncs profile-owned harness assets;
 3. records the destination in
    `$XDG_STATE_HOME/processkit/installs.json` (falling back to
@@ -39,7 +59,8 @@ processkit deinit --project-root /path/to/project --yes
 ```
 
 This removes the current destination's unmodified managed harness files and
-local Processkit MCP entry. Member-modified files are preserved and reported;
+unwires the local Processkit MCP entry from every agent config written at init
+(Cursor, Claude, Codex, …). Member-modified files are preserved and reported;
 only Processkit-owned keys are removed from the shared extract registry. The
 destination is then forgotten from the install ledger.
 

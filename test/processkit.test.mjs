@@ -27,6 +27,12 @@ import {
   uninstallHarness,
 } from '../dist/install/harness.js'
 import { installCursorMcp, uninstallCursorMcp } from '../dist/install/cursor-mcp.js'
+import {
+  agentConfigPath,
+  installAgents,
+  uninstallAgents,
+} from '../dist/install/agents.js'
+import { runInitWizard } from '../dist/install/wizard.js'
 import { mergeExtractRegistry } from '../dist/install/extract-registry.js'
 import {
   discoverInstalls,
@@ -478,6 +484,131 @@ test('CLI deinit is repo-local and uninstall defaults to global all', () => {
   assert.equal('processkit' in globalMcp.mcpServers, false)
   assert.deepEqual(globalMcp.mcpServers.keep, { command: 'keep' })
   rmSync(home, { recursive: true, force: true })
+})
+
+test('init wizard asks agents first (detected pre-checked), then lane, no tech step', async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-wizard-'))
+  mkdirSync(path.join(root, '.cursor'), { recursive: true })
+  const calls = []
+
+  const result = await runInitWizard({
+    cwd: root,
+    prompts: {
+      checkbox: async (opts) => {
+        calls.push('agents')
+        assert.match(opts.message, /agents/i)
+        const cursor = opts.choices.find((choice) => choice.value === 'cursor')
+        assert.ok(cursor, 'cursor must be offered')
+        assert.equal(cursor.checked, true, 'detected agent must be pre-checked')
+        assert.match(cursor.name, /detected/)
+        return ['cursor', 'codex']
+      },
+      select: async (opts) => {
+        calls.push('lane')
+        assert.deepEqual(
+          opts.choices.map((choice) => choice.value),
+          ['docs', 'fe', 'be'],
+        )
+        return 'be'
+      },
+    },
+  })
+
+  assert.deepEqual(calls, ['agents', 'lane'], 'wizard order must be agents → lane')
+  assert.deepEqual(result, { agents: ['cursor', 'codex'], type: 'be' })
+})
+
+test('installAgents writes project-local MCP configs for every selected agent', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-agents-'))
+  const agents = ['cursor', 'claude', 'codex', 'opencode', 'hermes', 'antigravity']
+  const result = installAgents({ projectRoot: root, agents })
+  assert.deepEqual(result.targets, agents)
+  assert.equal(result.skipped.length, 0)
+
+  for (const agent of agents) {
+    const file = agentConfigPath(agent, root)
+    assert.ok(file.startsWith(root), `${agent} config must live under the repo`)
+    assert.ok(existsSync(file), `${agent} config must be written`)
+  }
+
+  const cursor = JSON.parse(readFileSync(path.join(root, '.cursor', 'mcp.json'), 'utf8'))
+  assert.equal(cursor.mcpServers.processkit.env.PROCESSKIT_ROOT, root)
+  const codex = readFileSync(path.join(root, '.codex', 'config.toml'), 'utf8')
+  assert.match(codex, /\[mcp_servers\.processkit\]/)
+  const claudePerms = JSON.parse(
+    readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8'),
+  )
+  assert.ok(claudePerms.permissions.allow.includes('mcp__processkit__*'))
+})
+
+test('uninstallAgents unwires every agent written at init, dry-run first', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-unwire-agents-'))
+  const agents = ['cursor', 'claude', 'codex', 'hermes']
+  installAgents({ projectRoot: root, agents })
+
+  const dryRun = uninstallAgents({ projectRoot: root })
+  assert.equal(dryRun.dryRun, true)
+  assert.equal(
+    dryRun.removed.filter((entry) => !entry.includes('(permissions)')).length,
+    agents.length,
+  )
+  for (const agent of agents) {
+    assert.ok(existsSync(agentConfigPath(agent, root)), 'dry-run must not delete entries')
+  }
+
+  const applied = uninstallAgents({ projectRoot: root, yes: true })
+  assert.equal(applied.dryRun, false)
+  const cursor = JSON.parse(readFileSync(path.join(root, '.cursor', 'mcp.json'), 'utf8'))
+  assert.equal('processkit' in cursor.mcpServers, false)
+  assert.doesNotMatch(
+    readFileSync(path.join(root, '.codex', 'config.toml'), 'utf8'),
+    /mcp_servers\.processkit/,
+  )
+  assert.doesNotMatch(
+    readFileSync(path.join(root, '.hermes', 'config.yaml'), 'utf8'),
+    /processkit/,
+  )
+  const claudePerms = JSON.parse(
+    readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8'),
+  )
+  assert.equal(claudePerms.permissions.allow.includes('mcp__processkit__*'), false)
+
+  const again = uninstallAgents({ projectRoot: root, yes: true })
+  assert.equal(again.removed.length, 0)
+})
+
+test('CLI init wires multiple agents locally and deinit unwires them all', () => {
+  const cli = path.resolve('bin/processkit.mjs')
+  const home = mkdtempSync(path.join(os.tmpdir(), 'processkit-multi-home-'))
+  const state = mkdtempSync(path.join(os.tmpdir(), 'processkit-multi-state-'))
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-multi-root-'))
+  const env = { ...process.env, HOME: home, PROCESSKIT_STATE_DIR: state }
+
+  const init = spawnSync(
+    process.execPath,
+    [cli, 'init', '--type=fe', '--target=cursor,codex,claude', '--project-root', root, '--yes'],
+    { encoding: 'utf8', env },
+  )
+  assert.equal(init.status, 0, init.stderr)
+  assert.ok(existsSync(path.join(root, '.cursor', 'mcp.json')))
+  assert.ok(existsSync(path.join(root, '.codex', 'config.toml')))
+  assert.ok(existsSync(path.join(root, '.claude.json')))
+  assert.ok(existsSync(path.join(root, '.processkit', 'install-manifest.json')))
+
+  const deinit = spawnSync(
+    process.execPath,
+    [cli, 'deinit', '--project-root', root, '--yes'],
+    { encoding: 'utf8', env },
+  )
+  assert.equal(deinit.status, 0, deinit.stderr)
+  const cursor = JSON.parse(readFileSync(path.join(root, '.cursor', 'mcp.json'), 'utf8'))
+  assert.equal('processkit' in cursor.mcpServers, false)
+  assert.doesNotMatch(
+    readFileSync(path.join(root, '.codex', 'config.toml'), 'utf8'),
+    /mcp_servers\.processkit/,
+  )
+  const claude = JSON.parse(readFileSync(path.join(root, '.claude.json'), 'utf8'))
+  assert.equal('processkit' in claude.mcpServers, false)
 })
 
 test('lifecycle APIs are exported from the package entry point', async () => {

@@ -12,15 +12,24 @@ optionals produce one schema-validated evidence event per run/optional with
 actual file-read and context-byte metrics; see
 [`docs/OPTIONAL-ACCELERATORS.md`](docs/OPTIONAL-ACCELERATORS.md).
 
-## Install (local checkout)
+## Quick start (member)
 
 ```bash
-pnpm install
-pnpm build
-
+curl -fsSL https://raw.githubusercontent.com/raintr91/Processkit/main/install.sh | bash
 cd /path/to/project
-node /path/to/Processkit/bin/processkit.mjs init --type=docs --target=cursor --yes
+processkit init        # wizard: agents → lane (docs|fe|be)
 ```
+
+The wizard picks agents (checkbox, detected ones pre-checked), then the lane.
+Every selected agent gets a project-local MCP config in the current repo; there
+is no location prompt. CI keeps the long flags:
+
+```bash
+processkit init --type=docs --target=cursor --yes
+```
+
+From a local checkout: `pnpm install && pnpm build`, then run
+`node /path/to/Processkit/bin/processkit.mjs init` from the target repo.
 
 Profiles:
 
@@ -53,7 +62,8 @@ deletions.
 Without `--yes`, `deinit` and `uninstall` are dry-runs in non-interactive use;
 in a TTY they preview and ask for confirmation. `deinit` is the inverse of
 `init` for the current destination: it removes hash-matching managed harness
-files and local Processkit MCP wiring, preserves and reports modified files,
+files and unwires local Processkit MCP entries from every agent config written
+at init, preserves and reports modified files,
 safely removes only Processkit bundle keys from the shared extract registry,
 and forgets the destination from the ledger.
 

@@ -38,4 +38,4 @@ New-Item -ItemType Directory -Force $BinDir | Out-Null
   Set-Content "$BinDir\processkit-mcp.cmd"
 
 Write-Host "Installed Processkit. Next:"
-Write-Host "  processkit init --type=$Type --target=cursor --yes"
+Write-Host "  processkit init   # wizard: agents -> lane (CI: --type=$Type --target=cursor --yes)"

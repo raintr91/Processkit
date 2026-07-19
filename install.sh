@@ -38,4 +38,4 @@ ln -sf "$INSTALL_DIR/bin/processkit-mcp.mjs" "$BIN_DIR/processkit-mcp"
 chmod +x "$INSTALL_DIR/bin/"*.mjs
 
 echo "Installed Processkit. Next:"
-echo "  cd /path/to/project && processkit init --type=docs --target=cursor --yes"
+echo "  cd /path/to/project && processkit init   # wizard: agents → lane"
