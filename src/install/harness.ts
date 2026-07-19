@@ -12,6 +12,11 @@ import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { packageRoot, packageVersion } from '../config/project-root.js'
 import { unmergeExtractRegistry } from './extract-registry.js'
+import {
+  canonicalGitignorePattern,
+  removeGitignoreEntries,
+  type OwnedGitignoreEntry,
+} from './gitignore.js'
 import { forgetInstall, recordInstall } from './ledger.js'
 
 export type ProcesskitType = 'docs' | 'fe' | 'be'
@@ -44,6 +49,14 @@ export interface InstallManifest {
   harnessApi: number
   installedAt: string
   files: Record<string, ManagedFile>
+  /** Exact `.gitignore` entries Processkit ensured, with shared-ownership. */
+  gitignore?: OwnedGitignoreEntry[]
+}
+
+export interface GitignoreEntryStatus {
+  pattern: string
+  shared: boolean
+  present: boolean
 }
 
 export interface HarnessInstallResult {
@@ -65,6 +78,7 @@ export interface HarnessStatus {
   missing: string[]
   modified: string[]
   stale: string[]
+  gitignore: GitignoreEntryStatus[]
   compat: 'ok' | 'warn' | 'fail'
 }
 
@@ -83,6 +97,10 @@ export interface HarnessUninstallResult {
   missing: string[]
   manifestRemoved: boolean
   registry?: string
+  /** Exclusive-owned ignore patterns removed (or planned in dry-run). */
+  gitignoreRemoved: string[]
+  /** Shared ignore patterns kept because other toolkits may rely on them. */
+  gitignoreKept: string[]
 }
 
 function hash(content: string): string {
@@ -178,7 +196,59 @@ function readManifest(root: string): InstallManifest | null {
       throw new Error(`Invalid managed file entry ${JSON.stringify(targetKey)} at ${file}`)
     }
   }
+  if (data.gitignore !== undefined) {
+    if (!Array.isArray(data.gitignore)) {
+      throw new Error(`Invalid Processkit install manifest gitignore at ${file}`)
+    }
+    for (const entry of data.gitignore) {
+      if (
+        typeof entry !== 'object' ||
+        entry === null ||
+        typeof entry.pattern !== 'string' ||
+        !entry.pattern.trim() ||
+        /[\r\n]/.test(entry.pattern) ||
+        (entry.shared !== undefined && typeof entry.shared !== 'boolean')
+      ) {
+        throw new Error(`Invalid Processkit install manifest gitignore entry at ${file}`)
+      }
+    }
+  }
   return data as InstallManifest
+}
+
+function mergeManifestGitignore(
+  previous: OwnedGitignoreEntry[] | undefined,
+  next: OwnedGitignoreEntry[] | undefined,
+): OwnedGitignoreEntry[] {
+  const merged = new Map<string, OwnedGitignoreEntry>()
+  for (const entry of [...(previous ?? []), ...(next ?? [])]) {
+    const canonical = canonicalGitignorePattern(entry.pattern)
+    if (!canonical) continue
+    const existing = merged.get(canonical)
+    merged.set(canonical, {
+      pattern: entry.pattern,
+      ...(entry.shared || existing?.shared ? { shared: true } : {}),
+    })
+  }
+  return [...merged.values()]
+}
+
+function gitignoreStatus(root: string, manifest: InstallManifest | null): GitignoreEntryStatus[] {
+  const entries = manifest?.gitignore ?? []
+  if (!entries.length) return []
+  const file = path.join(root, '.gitignore')
+  const present = new Set<string>()
+  if (existsSync(file)) {
+    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (trimmed && !trimmed.startsWith('#')) present.add(canonicalGitignorePattern(trimmed))
+    }
+  }
+  return entries.map((entry) => ({
+    pattern: entry.pattern,
+    shared: Boolean(entry.shared),
+    present: present.has(canonicalGitignorePattern(entry.pattern)),
+  }))
 }
 
 function assertCompatible(manifest: InstallManifest | null, file: string): void {
@@ -214,6 +284,7 @@ export function harnessStatus(projectRoot?: string): HarnessStatus {
       missing,
       modified,
       stale,
+      gitignore: [],
       compat: 'warn',
     }
   }
@@ -245,6 +316,7 @@ export function harnessStatus(projectRoot?: string): HarnessStatus {
     missing,
     modified,
     stale,
+    gitignore: gitignoreStatus(root, previous),
     compat: !apiCompatible
       ? 'fail'
       : previous.packageVersion === packageVersion()
@@ -257,9 +329,10 @@ export function installHarness(opts: {
   projectRoot: string
   type: ProcesskitType
   force?: boolean
+  /** Exact ignore entries this init ensured; recorded for status/deinit. */
+  gitignoreEntries?: OwnedGitignoreEntry[]
 }): HarnessInstallResult {
   const root = path.resolve(opts.projectRoot)
-  const sourceRoot = path.join(packageRoot(), 'harness', opts.type)
   const previous = readManifest(root)
   assertCompatible(previous, manifestFile(root))
   const result: HarnessInstallResult = {
@@ -269,18 +342,23 @@ export function installHarness(opts: {
     stale: [],
   }
   const files: InstallManifest['files'] = {}
-  const sources = walk(sourceRoot).map((source) => ({
-    source,
-    targetRel: path.join('.cursor', path.relative(sourceRoot, source)).split(path.sep).join('/'),
-  }))
+  const sourceRoots = [
+    path.join(packageRoot(), 'harness', 'common'),
+    path.join(packageRoot(), 'harness', opts.type),
+  ]
+  const sources = sourceRoots.flatMap((sourceRoot) =>
+    walk(sourceRoot).map((source) => ({
+      source,
+      targetRel: path.join('.cursor', path.relative(sourceRoot, source)).split(path.sep).join('/'),
+    })),
+  )
   sources.push({
     source: path.join(packageRoot(), 'schemas', 'missing-optional-event.schema.json'),
     targetRel: '.cursor/schemas/processkit/missing-optional-event.schema.json',
   })
 
   for (const { source, targetRel } of sources) {
-    const rel = path.relative(sourceRoot, source)
-    if (rel === path.join('extracts', 'extract-registry.processkit.json')) continue
+    if (path.basename(source) === 'extract-registry.processkit.json') continue
     const target = containedTarget(root, targetRel)
     const content = readFileSync(source, 'utf8')
     files[targetRel] = {
@@ -321,6 +399,8 @@ export function installHarness(opts: {
     installedAt: new Date().toISOString(),
     files,
   }
+  const gitignore = mergeManifestGitignore(previous?.gitignore, opts.gitignoreEntries)
+  if (gitignore.length) manifest.gitignore = gitignore
   mkdirSync(path.dirname(manifestFile(root)), { recursive: true })
   writeFileSync(manifestFile(root), `${JSON.stringify(manifest, null, 2)}\n`)
   recordInstall(root)
@@ -380,6 +460,8 @@ export function uninstallHarness(opts: {
     preservedModified: [],
     missing: [],
     manifestRemoved: false,
+    gitignoreRemoved: [],
+    gitignoreKept: [],
   }
   if (!previous) {
     if (!dryRun) forgetInstall(root)
@@ -408,6 +490,30 @@ export function uninstallHarness(opts: {
 
   const registry = unmergeExtractRegistry(root, dryRun)
   if (registry) result.registry = registry
+
+  // Shared ignore entries (e.g. /.cursor/) may still be relied on by another
+  // toolkit, so only exclusively-owned patterns are removed.
+  const owned = previous.gitignore ?? []
+  result.gitignoreKept = owned.filter((entry) => entry.shared).map((entry) => entry.pattern)
+  const exclusive = owned.filter((entry) => !entry.shared).map((entry) => entry.pattern)
+  if (exclusive.length) {
+    if (dryRun) {
+      const file = path.join(root, '.gitignore')
+      const present = new Set<string>()
+      if (existsSync(file)) {
+        for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+          const trimmed = line.trim()
+          if (trimmed && !trimmed.startsWith('#')) present.add(canonicalGitignorePattern(trimmed))
+        }
+      }
+      result.gitignoreRemoved = exclusive.filter((pattern) =>
+        present.has(canonicalGitignorePattern(pattern)),
+      )
+    } else {
+      result.gitignoreRemoved = removeGitignoreEntries(root, exclusive).removed
+    }
+  }
+
   if (dryRun) {
     result.wouldDelete.push(manifestFile(root))
     return result

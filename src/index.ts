@@ -16,6 +16,7 @@ export {
   SKILLS_BY_TYPE,
 } from './install/harness.js'
 export type {
+  GitignoreEntryStatus,
   HarnessInstallResult,
   HarnessStatus,
   InstallManifest,
@@ -43,6 +44,17 @@ export type {
 } from './install/agents.js'
 export { runInitWizard } from './install/wizard.js'
 export type { WizardPrompts, WizardResult } from './install/wizard.js'
+export {
+  canonicalGitignorePattern,
+  ensureGitignoreEntries,
+  generatedTargets,
+  removeGitignoreEntries,
+} from './install/gitignore.js'
+export type {
+  EnsureGitignoreResult,
+  OwnedGitignoreEntry,
+  RemoveGitignoreResult,
+} from './install/gitignore.js'
 export {
   discoverInstalls,
   forgetInstall,

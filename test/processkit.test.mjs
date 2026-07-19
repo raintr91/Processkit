@@ -33,6 +33,12 @@ import {
   uninstallAgents,
 } from '../dist/install/agents.js'
 import { runInitWizard } from '../dist/install/wizard.js'
+import {
+  canonicalGitignorePattern,
+  ensureGitignoreEntries,
+  generatedTargets,
+  removeGitignoreEntries,
+} from '../dist/install/gitignore.js'
 import { mergeExtractRegistry } from '../dist/install/extract-registry.js'
 import {
   discoverInstalls,
@@ -406,6 +412,30 @@ test('CLI status and prune require --yes for deletion', () => {
   assert.equal(harnessStatus(root).stale.length, 0)
 })
 
+test('CLI init with no agents still installs harness and prints add-later hint', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-empty-'))
+  const cli = path.resolve('bin/processkit.mjs')
+  const init = spawnSync(
+    process.execPath,
+    [cli, 'init', '--type=docs', '--target=none', '--project-root', root, '--yes'],
+    { cwd: path.resolve('.'), encoding: 'utf8' },
+  )
+  assert.equal(init.status, 0, init.stderr)
+  // No agent selected → nothing wired, but the member is told how to add later.
+  assert.match(init.stdout, /→ \(none\)/)
+  assert.match(init.stdout, /no agents wired/)
+  assert.match(init.stdout, /re-run `processkit init`/)
+  // Harness lands regardless of the empty agent set.
+  assert.equal(harnessStatus(root).type, 'docs')
+  assert.ok(existsSync(path.join(root, '.cursor')))
+  // No MCP config is written when no agent is chosen.
+  assert.equal(existsSync(path.join(root, '.cursor', 'mcp.json')), false)
+  // Only the exclusively-owned + shared harness dirs are ignored.
+  const gitignore = readFileSync(path.join(root, '.gitignore'), 'utf8')
+  assert.match(gitignore, /\/\.processkit\//)
+  assert.match(gitignore, /\/\.cursor\//)
+})
+
 test('CLI deinit is repo-local and uninstall defaults to global all', () => {
   const cli = path.resolve('bin/processkit.mjs')
   const home = mkdtempSync(path.join(os.tmpdir(), 'processkit-home-'))
@@ -611,6 +641,161 @@ test('CLI init wires multiple agents locally and deinit unwires them all', () =>
   assert.equal('processkit' in claude.mcpServers, false)
 })
 
+test('gitignore merge is idempotent, equivalence-aware, and EOL-preserving', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-gitignore-'))
+
+  // Missing file is created.
+  const first = ensureGitignoreEntries(root, ['/.processkit/', '/.cursor/'])
+  assert.equal(first.changed, true)
+  assert.deepEqual(first.added, ['/.processkit/', '/.cursor/'])
+
+  // Double init adds nothing.
+  const second = ensureGitignoreEntries(root, ['/.processkit/', '/.cursor/'])
+  assert.equal(second.changed, false)
+  assert.deepEqual(second.added, [])
+
+  // Equivalent member-authored patterns are recognized (.cursor/ == /.cursor/).
+  const crlf = mkdtempSync(path.join(os.tmpdir(), 'processkit-gitignore-crlf-'))
+  writeFileSync(path.join(crlf, '.gitignore'), 'node_modules/\r\n.cursor/\r\n')
+  const merged = ensureGitignoreEntries(crlf, ['/.cursor/', '/.processkit/'])
+  assert.deepEqual(merged.added, ['/.processkit/'])
+  const content = readFileSync(path.join(crlf, '.gitignore'), 'utf8')
+  assert.equal(content, 'node_modules/\r\n.cursor/\r\n/.processkit/\r\n')
+
+  // Removal drops only the requested patterns, preserving member lines + EOL.
+  const removed = removeGitignoreEntries(crlf, ['/.processkit/'])
+  assert.deepEqual(removed.removed, ['/.processkit/'])
+  assert.equal(readFileSync(path.join(crlf, '.gitignore'), 'utf8'), 'node_modules/\r\n.cursor/\r\n')
+  assert.equal(canonicalGitignorePattern('/.cursor/'), canonicalGitignorePattern('.cursor'))
+})
+
+test('generatedTargets derives entries from actual writes only', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-targets-'))
+  const written = [
+    path.join(root, '.cursor', 'mcp.json'),
+    path.join(root, '.claude.json'),
+    `${path.join(root, '.claude', 'settings.json')} (permissions)`,
+    path.join(root, '.gemini', 'settings.json'),
+    path.join(root, '.gemini', 'config', 'mcp_config.json'),
+    path.join(root, 'opencode.jsonc'),
+    path.join(os.homedir(), '.codex', 'config.toml'),
+  ]
+  const entries = generatedTargets(root, written)
+  const patterns = entries.map((entry) => entry.pattern)
+
+  assert.deepEqual(patterns, [
+    '/.cursor/',
+    '/.processkit/',
+    '/.claude.json',
+    '/.claude/',
+    '/.gemini/',
+    '/opencode.jsonc',
+  ])
+  // Gemini + Antigravity collapse into one /.gemini/; global paths are excluded.
+  assert.equal(patterns.filter((pattern) => pattern === '/.gemini/').length, 1)
+  assert.ok(!patterns.some((pattern) => pattern.includes('codex')))
+  // Only opencode.jsonc (actually written) is ignored, not opencode.json.
+  assert.ok(!patterns.includes('/opencode.json'))
+  // .processkit/ is the only exclusive entry; everything else is shared.
+  for (const entry of entries) {
+    assert.equal(Boolean(entry.shared), entry.pattern !== '/.processkit/')
+  }
+})
+
+test('manifest records exact ignore entries and status reports missing ones', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-ignore-status-'))
+  const entries = generatedTargets(root, [path.join(root, '.cursor', 'mcp.json')])
+  ensureGitignoreEntries(root, entries.map((entry) => entry.pattern))
+  installHarness({ projectRoot: root, type: 'docs', gitignoreEntries: entries })
+
+  const manifest = JSON.parse(
+    readFileSync(path.join(root, '.processkit/install-manifest.json'), 'utf8'),
+  )
+  assert.deepEqual(manifest.gitignore, [
+    { pattern: '/.cursor/', shared: true },
+    { pattern: '/.processkit/' },
+  ])
+
+  const healthy = harnessStatus(root)
+  assert.ok(healthy.gitignore.every((entry) => entry.present))
+
+  removeGitignoreEntries(root, ['/.processkit/'])
+  const degraded = harnessStatus(root)
+  const missing = degraded.gitignore.find((entry) => entry.pattern === '/.processkit/')
+  assert.equal(missing.present, false)
+  assert.equal(missing.shared, false)
+  assert.equal(degraded.gitignore.find((entry) => entry.pattern === '/.cursor/').present, true)
+})
+
+test('deinit removes exclusive ignore entries but keeps shared multi-toolkit ones', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-ignore-deinit-'))
+  // Another toolkit already relies on .cursor/ (unanchored member form).
+  writeFileSync(path.join(root, '.gitignore'), '# member\n.cursor/\nother-toolkit.local.json\n')
+
+  const entries = generatedTargets(root, [path.join(root, '.cursor', 'mcp.json')])
+  const merged = ensureGitignoreEntries(root, entries.map((entry) => entry.pattern))
+  assert.deepEqual(merged.added, ['/.processkit/'], 'equivalent .cursor/ must not duplicate')
+  installHarness({ projectRoot: root, type: 'fe', gitignoreEntries: entries })
+
+  const dryRun = uninstallHarness({ projectRoot: root })
+  assert.deepEqual(dryRun.gitignoreRemoved, ['/.processkit/'])
+  assert.deepEqual(dryRun.gitignoreKept, ['/.cursor/'])
+  assert.match(readFileSync(path.join(root, '.gitignore'), 'utf8'), /\.processkit/)
+
+  const applied = uninstallHarness({ projectRoot: root, yes: true })
+  assert.deepEqual(applied.gitignoreRemoved, ['/.processkit/'])
+  const after = readFileSync(path.join(root, '.gitignore'), 'utf8')
+  assert.equal(after, '# member\n.cursor/\nother-toolkit.local.json\n')
+})
+
+test('CLI init merges gitignore from actual writes and re-init is idempotent', () => {
+  const cli = path.resolve('bin/processkit.mjs')
+  const home = mkdtempSync(path.join(os.tmpdir(), 'processkit-gi-home-'))
+  const state = mkdtempSync(path.join(os.tmpdir(), 'processkit-gi-state-'))
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-gi-root-'))
+  const env = { ...process.env, HOME: home, PROCESSKIT_STATE_DIR: state }
+  const run = (args) =>
+    spawnSync(process.execPath, [cli, ...args, '--project-root', root, '--yes'], {
+      encoding: 'utf8',
+      env,
+    })
+
+  const init = run(['init', '--type=docs', '--target=cursor,claude'])
+  assert.equal(init.status, 0, init.stderr)
+  const gitignore = readFileSync(path.join(root, '.gitignore'), 'utf8')
+  assert.ok(gitignore.includes('/.cursor/'))
+  assert.ok(gitignore.includes('/.processkit/'))
+  assert.ok(gitignore.includes('/.claude.json'))
+  assert.ok(gitignore.includes('/.claude/'))
+  assert.ok(!gitignore.includes('.mcp.json'), 'detection-only paths are never ignored')
+
+  const again = run(['init', '--type=docs', '--target=cursor,claude'])
+  assert.equal(again.status, 0, again.stderr)
+  assert.equal(readFileSync(path.join(root, '.gitignore'), 'utf8'), gitignore)
+
+  const deinit = run(['deinit'])
+  assert.equal(deinit.status, 0, deinit.stderr)
+  const after = readFileSync(path.join(root, '.gitignore'), 'utf8')
+  assert.ok(!after.includes('/.processkit/'))
+  assert.ok(after.includes('/.cursor/'), 'shared entries survive deinit')
+})
+
+test('cross-repo routing rule is installed for every lane', () => {
+  for (const type of ['docs', 'fe', 'be']) {
+    const root = mkdtempSync(path.join(os.tmpdir(), `processkit-routing-${type}-`))
+    const harness = installHarness({ projectRoot: root, type })
+    const rule = path.join(root, '.cursor/rules/processkit-cross-repo-index.mdc')
+    assert.ok(harness.written.includes(rule), `${type} lane must install the routing rule`)
+    const body = readFileSync(rule, 'utf8')
+    assert.match(body, /HUBDOCS_ROOT/)
+    assert.match(body, /codegraph-<key>/)
+    assert.match(body, /CODEGENKIT_DOCS_ROOT/)
+    assert.match(body, /Never run `codegraph init` in a workspace parent/)
+    assert.match(body, /platform-dna codegraph:wire/)
+    assert.match(body, /ArtifactGraph stays local-only/)
+  }
+})
+
 test('lifecycle APIs are exported from the package entry point', async () => {
   const api = await import('../dist/index.js')
   assert.equal(typeof api.harnessStatus, 'function')
@@ -628,7 +813,7 @@ test('package manifests stay version-aligned', () => {
   const pkg = JSON.parse(readFileSync(path.resolve('package.json'), 'utf8'))
   const mcpPkg = JSON.parse(readFileSync(path.resolve('mcp-package.json'), 'utf8'))
   const server = readFileSync(path.resolve('src/mcp/server.ts'), 'utf8')
-  assert.equal(pkg.version, '0.3.1')
+  assert.equal(pkg.version, '0.4.0')
   assert.equal(mcpPkg.version, pkg.version)
   assert.match(server, new RegExp(`version: '${pkg.version.replaceAll('.', '\\.')}'`))
 })
@@ -677,7 +862,7 @@ test('0.3.0 unnamespaced schema becomes stale and prune-safe on re-init', () => 
   assert.equal(existsSync(oldTarget), true)
 
   const status = harnessStatus(root)
-  assert.equal(status.packageVersionInstalled, '0.3.1')
+  assert.equal(status.packageVersionInstalled, '0.4.0')
   assert.ok(status.stale.includes(oldTarget))
   assert.ok(status.healthy.includes(newTarget))
 

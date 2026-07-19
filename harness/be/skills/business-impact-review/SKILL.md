@@ -47,15 +47,25 @@ Targeted test plan
 
 ## Accelerators (optional)
 
+Route per intent (rule `processkit-cross-repo-index.mdc`): never one merged
+workspace graph — always the correct per-repo index.
+
 ```text
-if CodeGraph available: changed symbols + callers + call graph
+if CodeGraph available: changed symbols + callers + call graph — for repo X use
+  its own server `codegraph-<key>` (--project-root = X's checkout), never the
+  open repo's index; unindexed repo → report `cd <root> && codegraph init`
 else: targeted repository search/read
 
-if Hubdocs available: map process steps to CMP/CTR/FLOW docs
+if Hubdocs available: map process steps to CMP/CTR/FLOW docs via HUBDOCS_ROOT
+  (never CodeGraph for architecture Markdown)
 else: repository conventions/search
 
 if ArtifactGraph available: affected tags/registries/parity
+  (local-only — never a shared index for other repos)
 else: model review from scoped evidence
+
+IR / registry / generation questions → pointer kits
+  (CODEGENKIT_DOCS_ROOT, TESTKIT_DOCS_ROOT, TESTKIT_TESTS_ROOT)
 ```
 
 Missing accelerators never block the review. Assign one stable `runId` at run

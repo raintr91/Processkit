@@ -20,6 +20,7 @@ import {
 } from './install/harness.js'
 import { mergeExtractRegistry } from './install/extract-registry.js'
 import { discoverInstalls, ledgerPath, readLedger, removeLedger } from './install/ledger.js'
+import { ensureGitignoreEntries, generatedTargets } from './install/gitignore.js'
 import { scopeUnifiedDiff, validateBusinessProcess, validateImpactReport } from './process/validate.js'
 import { lstatSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
@@ -165,6 +166,12 @@ function runUninstallScope(scope: UninstallScope, flags: UninstallFlags): void {
     for (const file of result.missing) console.log(`  already missing: ${file}`)
     if (result.registry) console.log(`  registry: ${result.registry}`)
     if (result.manifestRemoved) console.log(`  manifest removed: ${result.manifest}`)
+    for (const pattern of result.gitignoreRemoved) {
+      console.log(`  ${flags.yes ? 'removed' : 'would remove'} gitignore entry: ${pattern}`)
+    }
+    for (const pattern of result.gitignoreKept) {
+      console.log(`  kept shared gitignore entry: ${pattern}`)
+    }
   }
   const doMcp = (location: 'local' | 'global', projectRoot?: string): void => {
     if (location === 'local') {
@@ -317,8 +324,26 @@ async function main(): Promise<void> {
     console.log(`Wired processkit → ${mcp.targets.join(', ') || '(none)'} (local at ${root})`)
     for (const written of mcp.written) console.log(`  ${written.agent}: ${written.path}`)
     for (const skip of mcp.skipped) console.log(`  skip: ${skip}`)
+    if (!mcp.targets.length) {
+      // Empty init is allowed: the harness still installs. Tell the member how to
+      // wire agents later instead of pulling anything implicitly.
+      console.log(
+        '  no agents wired — re-run `processkit init` (or pass --target=<agent>) later to add MCP',
+      )
+    }
 
-    const harness = installHarness({ projectRoot: root, type, force: has('--force') })
+    // Ignore entries derive from the local targets this init actually wrote.
+    const ignoreEntries = generatedTargets(root, mcp.written.map((written) => written.path))
+    const gitignore = ensureGitignoreEntries(root, ignoreEntries.map((entry) => entry.pattern))
+    for (const added of gitignore.added) console.log(`  gitignore: added ${added}`)
+    if (!gitignore.changed) console.log(`  gitignore: unchanged ${gitignore.file}`)
+
+    const harness = installHarness({
+      projectRoot: root,
+      type,
+      force: has('--force'),
+      gitignoreEntries: ignoreEntries,
+    })
     for (const file of harness.written) console.log(`  wrote: ${file}`)
     for (const file of harness.unchanged) console.log(`  unchanged: ${file}`)
     for (const file of harness.conflicts) console.log(`  conflict: ${file}`)

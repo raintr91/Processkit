@@ -30,15 +30,25 @@ Do **not** invent missing hops. Curated product journeys stay under **`/journey`
 
 ## Accelerators (optional)
 
+Route per intent (rule `processkit-cross-repo-index.mdc`): never one merged
+workspace graph — always the correct per-repo index.
+
 ```text
-if CodeGraph available: symbol/caller/call-chain lookup
+if CodeGraph available: symbol/caller/call-chain lookup — for repo X use its
+  own server `codegraph-<key>` (--project-root = X's checkout), never the open
+  repo's index; unindexed repo → report `cd <root> && codegraph init`
 else: targeted local search/read; unresolved hop → compact model evidence slice
 
-if Hubdocs available: resolve CMP/CTR/FLOW IDs and doc paths
+if Hubdocs available: resolve CMP/CTR/FLOW IDs and doc paths via HUBDOCS_ROOT
+  (never CodeGraph for architecture Markdown)
 else: repository path conventions/search
 
 if ArtifactGraph available: parity/tag slice when contract/registry is touched
+  (local-only — never a shared index for other repos)
 else: model review from scoped evidence
+
+IR / registry / generation questions → pointer kits
+  (CODEGENKIT_DOCS_ROOT, TESTKIT_DOCS_ROOT, TESTKIT_TESTS_ROOT)
 ```
 
 At run start, assign one stable `runId`. For each unavailable optional MCP,

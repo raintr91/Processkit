@@ -9,8 +9,10 @@ alwaysApply: false
 - `/business-impact-review`: read-only vertical × horizontal blast-radius review.
 - `/flow-trace`: deprecated redirect to `/business-process-trace`.
 
-CodeGraph, Hubdocs and ArtifactGraph are optional accelerators. Missing tools
-must fall back to targeted local search/model analysis and explicit residual
-gaps. Per run/optional pair, count actual successful file reads and raw context
+CodeGraph, Hubdocs and ArtifactGraph are optional accelerators; route them per
+repo/intent as defined in `processkit-cross-repo-index.mdc` (architecture →
+Hubdocs, IR/registry → pointer kits, symbols of repo X → `codegraph-<key>` for
+X). Missing tools must fall back to targeted local search/model analysis and
+explicit residual gaps. Per run/optional pair, count actual successful file reads and raw context
 bytes, then emit exactly one `processkit.missing-optional` event conforming to
 `.cursor/schemas/processkit/missing-optional-event.schema.json`. Never estimate token savings.

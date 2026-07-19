@@ -43,3 +43,19 @@ calling the helpers.
 `processkit init` merges only its own MCP entry. Existing CodeGraph and other
 server entries in `.cursor/mcp.json` are preserved byte-for-value at the parsed
 JSON level; no live server probe is required.
+
+## Cross-repo index routing
+
+When an accelerator is available, route it per repo/intent — never merge every
+repository into one workspace graph. `init` installs the always-apply rule
+`processkit-cross-repo-index.mdc` into `.cursor/rules/` for every lane:
+
+- architecture ID / C4 path → Hubdocs (`HUBDOCS_ROOT`), never CodeGraph;
+- IR / registry / generation → pointer kits (`CODEGENKIT_DOCS_ROOT`,
+  `TESTKIT_DOCS_ROOT`, `TESTKIT_TESTS_ROOT`);
+- symbol / call-graph of repo `X` → that repo's own `codegraph-<key>` server
+  (`--project-root` = `X`'s checkout), not the currently open repo's index.
+
+Processkit never hand-writes cross-repo CodeGraph wiring; Platform DNA wires the
+`codegraph-<key>` servers from the machine-local maps (run
+`platform-dna codegraph:wire`). ArtifactGraph stays local-only.

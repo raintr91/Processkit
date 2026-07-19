@@ -22,7 +22,11 @@ processkit init        # wizard: agents → lane (docs|fe|be)
 
 The wizard picks agents (checkbox, detected ones pre-checked), then the lane.
 Every selected agent gets a project-local MCP config in the current repo; there
-is no location prompt. CI keeps the long flags:
+is no location prompt. Init also merges the generated local targets into
+`.gitignore` (derived from what it actually wrote, idempotent, member content
+and EOL preserved) and records them in the install manifest so `status` can
+report missing entries and `deinit` keeps shared ones. CI keeps the long
+flags:
 
 ```bash
 processkit init --type=docs --target=cursor --yes
