@@ -4,6 +4,7 @@ Standalone MCP/harness package for:
 
 - `/business-process-trace` — brownfield cross-system process evidence
 - `/business-impact-review` — vertical × horizontal code-change review
+- `/configure-repo-maps` — NL → machine-local checkout maps (cross-repo)
 - deprecated `/flow-trace` redirect
 
 Optional accelerators: CodeGraph, Hubdocs and ArtifactGraph. Processkit works
@@ -22,30 +23,71 @@ processkit init        # wizard: agents → lane (docs|fe|be)
 
 The wizard picks agents (checkbox, detected ones pre-checked), then the lane.
 Every selected agent gets a project-local MCP config in the current repo; there
-is no location prompt. Init also merges the generated local targets into
-`.gitignore` (derived from what it actually wrote, idempotent, member content
-and EOL preserved) and records them in the install manifest so `status` can
-report missing entries and `deinit` keeps shared ones. CI keeps the long
-flags:
+is no location prompt. Init also:
+
+- ensures `platform-repos.local.json` and `legacy-repos.local.json` when missing
+  (never overwrites; never seeds portable `*-repos.json`);
+- merges generated local targets into `.gitignore` (idempotent; unanchored
+  patterns `.cursor/` / `.processkit/` matching Platform DNA / Codegenkit);
+- installs shared `cross-repo-index.mdc` (DNA SSOT filename — no duplicate
+  `processkit-cross-repo-index.mdc`);
+- records entries in the install manifest so `status` can report missing
+  ignore lines and empty local maps.
+
+CI keeps the long flags:
 
 ```bash
 processkit init --type=docs --target=cursor --yes
 ```
 
-From a local checkout: `pnpm install && pnpm build`, then run
-`node /path/to/Processkit/bin/processkit.mjs init` from the target repo.
+### Local checkout / global CLI
+
+From a local checkout:
+
+```bash
+pnpm install && pnpm build
+# one-shot init without global install:
+node /path/to/Processkit/bin/processkit.mjs init
+
+# or refresh ~/.processkit + PATH shims from this checkout:
+./install.sh --from /path/to/Processkit
+# equivalent: PROCESSKIT_SRC=/path/to/Processkit ./install.sh
+```
+
+When Platform DNA should invoke this checkout instead of an older global
+`processkit` on PATH:
+
+```bash
+export PLATFORM_DNA_PROCESSKIT_ROOT=/path/to/Processkit
+platform-dna init
+```
 
 Profiles:
 
-- `docs`: process trace + impact review + deprecated redirect
-- `fe` / `be`: impact review only
+- `docs`: process trace + impact review + configure-repo-maps + deprecated redirect
+- `fe` / `be`: impact review + configure-repo-maps
+
+## Cross-repo routing
+
+| Step system id | Checkout map |
+|----------------|--------------|
+| `legacy-*` | `legacy-repos.local.json` |
+| otherwise | `platform-repos.local.json` |
+
+In-repo-only work needs no map. Cross-repo with empty/missing keys → Gaps +
+`/configure-repo-maps`, then `platform-dna codegraph:wire`.
+
+```text
+/configure-repo-maps
+2 portal + 2 API under ~/ws/…; legacy ERP at D:\legacy\erp key legacy-erp.
+```
 
 ## Managed harness lifecycle
 
 `init` records only Processkit-managed harness assets and their installed hashes
 in `.processkit/install-manifest.json`. Switching profiles marks assets from the
 previous profile as stale; it does not delete them or manage shared registries
-and project maps. It also records the destination in the XDG install ledger at
+and portable project maps. It also records the destination in the XDG install ledger at
 `$XDG_STATE_HOME/processkit/installs.json` (or
 `~/.local/state/processkit/installs.json`).
 
@@ -69,7 +111,7 @@ in a TTY they preview and ask for confirmation. `deinit` is the inverse of
 files and unwires local Processkit MCP entries from every agent config written
 at init, preserves and reports modified files,
 safely removes only Processkit bundle keys from the shared extract registry,
-and forgets the destination from the ledger.
+and forgets the destination from the ledger. Local map files are kept.
 
 `processkit uninstall` can run from anywhere. It defaults to global/all:
 every destination in the ledger, each local Processkit MCP entry, the global
@@ -95,7 +137,8 @@ CodeGraph MCP entry and does not require the server to be live.
 
 ## Portability
 
-Processkit does not write project maps (`platform-repos*.json`,
-`legacy-repos*.json`); they are Platform DNA-owned and optional. Machine
-checkout roots belong in ignored `legacy-repos.local.json`; the package never
-writes them.
+Processkit never writes portable `platform-repos.json` / `legacy-repos.json`
+(Platform DNA / Bundlekit own those). It only ensures ignored
+`platform-repos.local.json` and `legacy-repos.local.json` skeletons so
+cross-repo skills have a place to resolve checkouts regardless of toolkit
+install order.

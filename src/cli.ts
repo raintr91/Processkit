@@ -21,6 +21,7 @@ import {
 import { mergeExtractRegistry } from './install/extract-registry.js'
 import { discoverInstalls, ledgerPath, readLedger, removeLedger } from './install/ledger.js'
 import { ensureGitignoreEntries, generatedTargets } from './install/gitignore.js'
+import { ensureLocalRepoMaps } from './install/local-maps.js'
 import { scopeUnifiedDiff, validateBusinessProcess, validateImpactReport } from './process/validate.js'
 import { lstatSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
@@ -53,7 +54,7 @@ function usage(): never {
 
 Owned skills:
   docs: ${SKILLS_BY_TYPE.docs.map((id) => `/${id}`).join(' ')}
-  fe/be: /business-impact-review
+  fe/be: ${SKILLS_BY_TYPE.fe.map((id) => `/${id}`).join(' ')}
 `)
   process.exit(1)
 }
@@ -332,11 +333,26 @@ async function main(): Promise<void> {
       )
     }
 
-    // Ignore entries derive from the local targets this init actually wrote.
-    const ignoreEntries = generatedTargets(root, mcp.written.map((written) => written.path))
+    // Machine-local checkout maps: create-if-missing only (never overwrite).
+    // Portable platform-repos.json / legacy-repos.json stay DNA / Bundlekit-owned.
+    const localMaps = ensureLocalRepoMaps(root)
+    for (const file of localMaps.created) console.log(`  ensured: ${file}`)
+    for (const file of localMaps.skipped) console.log(`  map exists: ${file}`)
+    for (const added of localMaps.gitignoreAdded) {
+      console.log(`  gitignore: added ${added}`)
+    }
+
+    // Ignore entries derive from the local targets this init actually wrote,
+    // plus shared local-map patterns from ensureLocalRepoMaps.
+    const ignoreEntries = [
+      ...generatedTargets(root, mcp.written.map((written) => written.path)),
+      ...localMaps.gitignoreEntries,
+    ]
     const gitignore = ensureGitignoreEntries(root, ignoreEntries.map((entry) => entry.pattern))
     for (const added of gitignore.added) console.log(`  gitignore: added ${added}`)
-    if (!gitignore.changed) console.log(`  gitignore: unchanged ${gitignore.file}`)
+    if (!gitignore.changed && !localMaps.gitignoreAdded.length) {
+      console.log(`  gitignore: unchanged ${gitignore.file}`)
+    }
 
     const harness = installHarness({
       projectRoot: root,
@@ -349,11 +365,21 @@ async function main(): Promise<void> {
     for (const file of harness.conflicts) console.log(`  conflict: ${file}`)
     for (const file of harness.stale) console.log(`  stale: ${file} (run processkit prune)`)
     if (type === 'docs') console.log(`updated: ${mergeExtractRegistry(root)}`)
+    console.log(
+      '  tip: fill checkout roots with /configure-repo-maps before cross-repo /business-process-trace',
+    )
     return
   }
   if (command === 'status') {
     const status = harnessStatus(arg('--project-root'))
     console.log(JSON.stringify(status, null, 2))
+    const emptyMaps = status.localMaps.filter((map) => map.empty)
+    if (emptyMaps.length) {
+      console.error(
+        `local maps empty/missing (${emptyMaps.map((m) => m.file).join(', ')}); ` +
+          'cross-repo → /configure-repo-maps then platform-dna codegraph:wire',
+      )
+    }
     if (status.compat === 'fail') process.exit(1)
     return
   }

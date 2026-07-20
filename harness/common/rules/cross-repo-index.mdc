@@ -1,0 +1,47 @@
+---
+description: Cross-repo index routing — call the correct per-repo index, never one giant workspace graph.
+alwaysApply: true
+---
+
+# Cross-repo index routing (SSOT)
+
+Do not merge every repository into a single workspace graph (the parent folder
+must never be indexed). "Cross-repo" means a skill/rule knows how to reach the
+**correct per-repo index**, one repository at a time.
+
+**Owner:** Platform DNA. Processkit (and other toolkits) install this same
+filename only when DNA is absent, so a destination never carries duplicate
+`alwaysApply` routing rules under different names.
+
+Route by intent:
+
+- Need an architecture ID or C4 path -> Hubdocs MCP (`HUBDOCS_ROOT`). Never
+  CodeGraph for architecture Markdown.
+- Need IR / registry / generation -> the pointer kit
+  (`CODEGENKIT_DOCS_ROOT`, `TESTKIT_DOCS_ROOT`, `TESTKIT_TESTS_ROOT`).
+- Need a symbol or call-graph for repo `X` -> the CodeGraph MCP server for repo
+  `X` (`codegraph-<key>`, whose `--project-root` is `X`'s checkout). Do not use
+  the index of the repository currently open.
+
+Checkout maps (machine-local only):
+
+| System id / intent | Map |
+|--------------------|-----|
+| Prefix `legacy-` or clear legacy archaeology | `legacy-repos.local.json` |
+| Platform skills / step `[system]` without `legacy-` | `platform-repos.local.json` |
+
+Rules:
+
+- One `.codegraph/` per repository, created locally with `codegraph init` inside
+  that repo. Never run `codegraph init` in a workspace parent.
+- A repo without an index is reported, not auto-indexed; run the printed
+  `cd <root> && codegraph init` first.
+- ArtifactGraph stays local-only; it is never a shared index for FE, tests, or
+  legacy repositories.
+- Ambiguous keys → ask or Gaps; never invent sibling paths.
+- Missing / empty `.local.json` or missing key → Gaps + `/configure-repo-maps`
+  (NL); do not hand-edit JSON or guess absolute paths.
+- Platform DNA wires `codegraph-<key>` from both machine-local maps. Re-run
+  `platform-dna codegraph:wire` to refresh; never commit machine paths. Key
+  collision: **platform map wins**; prefer `legacy-*` keys for legacy-only
+  checkouts.

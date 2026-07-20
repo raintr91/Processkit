@@ -21,9 +21,17 @@ command [{system}] {CommandName}
 mail [{system}] template: {relative/path}
 ```
 
-Systems: use repo/product ids from evidence (`portal` | `api` | legacy checkouts via `legacy-repos.local.json`). Never invent sibling paths.
+Systems: use repo/product ids from evidence. Map roots:
 
-Resolve roots: `legacy/project-config.md` (progressive — needed ids only, no full JSON dump)
+| Step id | Checkout map |
+|---------|----------------|
+| `[mairy-fullsco]`, `[portal]`, `[api]`, … (no `legacy-` prefix) | `platform-repos.local.json` |
+| `[legacy-erp]`, other `legacy-*` | `legacy-repos.local.json` |
+
+Never invent sibling paths. Ambiguous keys → ask or Gaps. Cross-repo with
+missing map/key → Gaps + `/configure-repo-maps` (then `platform-dna codegraph:wire`).
+
+Progressive read only the needed `projects.<id>.root` — no full JSON dump.
 
 ## Missing optional accelerators
 
@@ -50,6 +58,9 @@ tokens. Contract: `.cursor/schemas/processkit/missing-optional-event.schema.json
 sequenceDiagram
   ...
 \`\`\`
+
+## Gaps
+- Cross-repo hop to [legacy-erp] needs root — run `/configure-repo-maps`
 ```
 
 No UI colors/layout. After a curated promote: write/link under `architecture/06-runtime/journeys/` via `/journey`.

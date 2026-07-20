@@ -138,7 +138,7 @@ export function removeGitignoreEntries(root: string, patterns: string[]): Remove
  * Entries are derived from the local files this init actually wrote (harness
  * always lands under `.cursor/`; agent MCP configs come from the agent
  * writers), never from a static per-agent table. Global paths outside the
- * repo are rejected, and Gemini/Antigravity collapse into one `/.gemini/`
+ * repo are rejected, and Gemini/Antigravity collapse into one `.gemini/`
  * entry. `.processkit/` is the only entry Processkit owns exclusively; every
  * agent config location may be shared with other toolkits.
  */
@@ -148,10 +148,11 @@ export function generatedTargets(
 ): OwnedGitignoreEntry[] {
   const root = path.resolve(projectRoot)
   const entries: OwnedGitignoreEntry[] = [
+    // Unanchored style matches Platform DNA / Codegenkit (`.cursor/` not `/.cursor/`).
     // Harness assets always land under .cursor/; other toolkits share the dir.
-    { pattern: '/.cursor/', shared: true },
+    { pattern: '.cursor/', shared: true },
     // Install state is exclusively Processkit-owned.
-    { pattern: '/.processkit/' },
+    { pattern: '.processkit/' },
   ]
 
   for (const written of writtenFiles) {
@@ -164,8 +165,8 @@ export function generatedTargets(
     }
     const posix = relative.split(path.sep).join('/')
     const top = posix.split('/')[0]!
-    const pattern = posix.includes('/') ? `/${top}/` : `/${posix}`
-    if (pattern === '/.cursor/' || pattern === '/.processkit/') continue
+    const pattern = posix.includes('/') ? `${top}/` : posix
+    if (pattern === '.cursor/' || pattern === '.processkit/') continue
     entries.push({ pattern, shared: true })
   }
 

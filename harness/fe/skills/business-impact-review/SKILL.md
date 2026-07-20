@@ -8,6 +8,19 @@ disable-model-invocation: true
 
 Read-only analysis by default. Do not implement fixes unless explicitly asked.
 
+## Checkout resolution
+
+Cross-repo callers/callees:
+
+| System id | Map |
+|-----------|-----|
+| `legacy-*` | `legacy-repos.local.json` |
+| Otherwise | `platform-repos.local.json` |
+
+Missing/empty map or missing key → **Gaps** + **`/configure-repo-maps`**; never
+guess paths. Then remind `platform-dna codegraph:wire` if needed. Ambiguous
+matches → ask or Gaps.
+
 ## Workflow
 
 1. Scope changed public/protected methods, routes, Jobs, Events, Listeners,
@@ -47,7 +60,7 @@ Targeted test plan
 
 ## Accelerators (optional)
 
-Route per intent (rule `processkit-cross-repo-index.mdc`): never one merged
+Route per intent (rule `cross-repo-index.mdc`): never one merged
 workspace graph — always the correct per-repo index.
 
 ```text
@@ -60,12 +73,12 @@ if Hubdocs available: map process steps to CMP/CTR/FLOW docs via HUBDOCS_ROOT
   (never CodeGraph for architecture Markdown)
 else: repository conventions/search
 
+IR / registry / generation questions → pointer kits
+  (CODEGENKIT_DOCS_ROOT, TESTKIT_DOCS_ROOT, TESTKIT_TESTS_ROOT)
+
 if ArtifactGraph available: affected tags/registries/parity
   (local-only — never a shared index for other repos)
 else: model review from scoped evidence
-
-IR / registry / generation questions → pointer kits
-  (CODEGENKIT_DOCS_ROOT, TESTKIT_DOCS_ROOT, TESTKIT_TESTS_ROOT)
 ```
 
 Missing accelerators never block the review. Assign one stable `runId` at run

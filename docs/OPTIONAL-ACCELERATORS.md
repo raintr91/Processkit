@@ -48,7 +48,9 @@ JSON level; no live server probe is required.
 
 When an accelerator is available, route it per repo/intent — never merge every
 repository into one workspace graph. `init` installs the always-apply rule
-`processkit-cross-repo-index.mdc` into `.cursor/rules/` for every lane:
+`cross-repo-index.mdc` (Platform DNA SSOT filename) into `.cursor/rules/` for
+every lane so Processkit-only installs still have the contract; when DNA is
+already present the same file is shared (no second `processkit-*` rule):
 
 - architecture ID / C4 path → Hubdocs (`HUBDOCS_ROOT`), never CodeGraph;
 - IR / registry / generation → pointer kits (`CODEGENKIT_DOCS_ROOT`,
@@ -56,6 +58,22 @@ repository into one workspace graph. `init` installs the always-apply rule
 - symbol / call-graph of repo `X` → that repo's own `codegraph-<key>` server
   (`--project-root` = `X`'s checkout), not the currently open repo's index.
 
-Processkit never hand-writes cross-repo CodeGraph wiring; Platform DNA wires the
-`codegraph-<key>` servers from the machine-local maps (run
-`platform-dna codegraph:wire`). ArtifactGraph stays local-only.
+Checkout maps (machine-local only):
+
+| System id | Map |
+|-----------|-----|
+| `legacy-*` | `legacy-repos.local.json` |
+| platform portal/api/tests/… | `platform-repos.local.json` |
+
+`init` ensures both `.local.json` skeletons exist (create-if-missing). Fill roots
+with **`/configure-repo-maps`** (NL). Cross-repo with empty/missing keys → Gaps
++ that skill; then `platform-dna codegraph:wire`. Processkit never hand-writes
+cross-repo CodeGraph wiring. ArtifactGraph stays local-only.
+
+Example before `/business-process-trace`:
+
+```text
+/configure-repo-maps
+Portal admin is at /home/me/ws/portal; API core at /home/me/ws/api;
+legacy ERP at /mnt/d/legacy/erp with key legacy-erp.
+```

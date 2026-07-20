@@ -18,6 +18,13 @@ import {
   type OwnedGitignoreEntry,
 } from './gitignore.js'
 import { forgetInstall, recordInstall } from './ledger.js'
+import { localMapsStatus, type LocalMapStatus } from './local-maps.js'
+import {
+  CONFIGURE_REPO_MAPS_REL,
+  CROSS_REPO_INDEX_REL,
+  isDnaConfigureRepoMapsSsot,
+  isDnaCrossRepoIndexSsot,
+} from './configure-repo-maps.js'
 
 export type ProcesskitType = 'docs' | 'fe' | 'be'
 export const PROCESSKIT_TOOL_API = 1
@@ -26,12 +33,20 @@ export const INSTALL_MANIFEST_PATH = '.processkit/install-manifest.json'
 const NEVER_PRUNE = new Set([
   'platform-repos.json',
   '.cursor/extracts/extract-registry.json',
+  // DNA SSOT routing rule — Processkit may install it for independence but must
+  // never delete it on deinit (DNA or another toolkit may still rely on it).
+  '.cursor/rules/cross-repo-index.mdc',
 ])
 
 export const SKILLS_BY_TYPE: Record<ProcesskitType, string[]> = {
-  docs: ['business-process-trace', 'business-impact-review', 'flow-trace'],
-  fe: ['business-impact-review'],
-  be: ['business-impact-review'],
+  docs: [
+    'business-process-trace',
+    'business-impact-review',
+    'configure-repo-maps',
+    'flow-trace',
+  ],
+  fe: ['business-impact-review', 'configure-repo-maps'],
+  be: ['business-impact-review', 'configure-repo-maps'],
 }
 
 export interface ManagedFile {
@@ -79,6 +94,8 @@ export interface HarnessStatus {
   modified: string[]
   stale: string[]
   gitignore: GitignoreEntryStatus[]
+  /** Machine-local checkout maps; empty/missing → cross-repo needs /configure-repo-maps. */
+  localMaps: LocalMapStatus[]
   compat: 'ok' | 'warn' | 'fail'
 }
 
@@ -285,6 +302,7 @@ export function harnessStatus(projectRoot?: string): HarnessStatus {
       modified,
       stale,
       gitignore: [],
+      localMaps: localMapsStatus(root),
       compat: 'warn',
     }
   }
@@ -317,6 +335,7 @@ export function harnessStatus(projectRoot?: string): HarnessStatus {
     modified,
     stale,
     gitignore: gitignoreStatus(root, previous),
+    localMaps: localMapsStatus(root),
     compat: !apiCompatible
       ? 'fail'
       : previous.packageVersion === packageVersion()
@@ -361,14 +380,23 @@ export function installHarness(opts: {
     if (path.basename(source) === 'extract-registry.processkit.json') continue
     const target = containedTarget(root, targetRel)
     const content = readFileSync(source, 'utf8')
-    files[targetRel] = {
-      source: path.relative(packageRoot(), source).split(path.sep).join('/'),
-      sha256: hash(content),
-    }
+    const normalizedRel = targetRel.replaceAll('\\', '/')
 
     if (existsSync(target)) {
       const current = readFileSync(target, 'utf8')
       if (current === content) {
+        files[targetRel] = {
+          source: path.relative(packageRoot(), source).split(path.sep).join('/'),
+          sha256: hash(content),
+        }
+        result.unchanged.push(target)
+        continue
+      }
+      // DNA SSOT already installed — keep it; do not claim or conflict.
+      if (
+        (normalizedRel === CONFIGURE_REPO_MAPS_REL && isDnaConfigureRepoMapsSsot(current)) ||
+        (normalizedRel === CROSS_REPO_INDEX_REL && isDnaCrossRepoIndexSsot(current))
+      ) {
         result.unchanged.push(target)
         continue
       }
@@ -377,6 +405,10 @@ export function installHarness(opts: {
         result.conflicts.push(target)
         continue
       }
+    }
+    files[targetRel] = {
+      source: path.relative(packageRoot(), source).split(path.sep).join('/'),
+      sha256: hash(content),
     }
     mkdirSync(path.dirname(target), { recursive: true })
     writeFileSync(target, content)
@@ -491,7 +523,7 @@ export function uninstallHarness(opts: {
   const registry = unmergeExtractRegistry(root, dryRun)
   if (registry) result.registry = registry
 
-  // Shared ignore entries (e.g. /.cursor/) may still be relied on by another
+  // Shared ignore entries (e.g. `.cursor/`) may still be relied on by another
   // toolkit, so only exclusively-owned patterns are removed.
   const owned = previous.gitignore ?? []
   result.gitignoreKept = owned.filter((entry) => entry.shared).map((entry) => entry.pattern)

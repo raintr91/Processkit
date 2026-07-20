@@ -432,8 +432,8 @@ test('CLI init with no agents still installs harness and prints add-later hint',
   assert.equal(existsSync(path.join(root, '.cursor', 'mcp.json')), false)
   // Only the exclusively-owned + shared harness dirs are ignored.
   const gitignore = readFileSync(path.join(root, '.gitignore'), 'utf8')
-  assert.match(gitignore, /\/\.processkit\//)
-  assert.match(gitignore, /\/\.cursor\//)
+  assert.match(gitignore, /(^|\n)\.processkit\//)
+  assert.match(gitignore, /(^|\n)\.cursor\//)
 })
 
 test('CLI deinit is repo-local and uninstall defaults to global all', () => {
@@ -644,28 +644,28 @@ test('CLI init wires multiple agents locally and deinit unwires them all', () =>
 test('gitignore merge is idempotent, equivalence-aware, and EOL-preserving', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-gitignore-'))
 
-  // Missing file is created.
-  const first = ensureGitignoreEntries(root, ['/.processkit/', '/.cursor/'])
+  // Missing file is created (unanchored style matches DNA/codegenkit).
+  const first = ensureGitignoreEntries(root, ['.processkit/', '.cursor/'])
   assert.equal(first.changed, true)
-  assert.deepEqual(first.added, ['/.processkit/', '/.cursor/'])
+  assert.deepEqual(first.added, ['.processkit/', '.cursor/'])
 
   // Double init adds nothing.
-  const second = ensureGitignoreEntries(root, ['/.processkit/', '/.cursor/'])
+  const second = ensureGitignoreEntries(root, ['.processkit/', '.cursor/'])
   assert.equal(second.changed, false)
   assert.deepEqual(second.added, [])
 
   // Equivalent member-authored patterns are recognized (.cursor/ == /.cursor/).
   const crlf = mkdtempSync(path.join(os.tmpdir(), 'processkit-gitignore-crlf-'))
-  writeFileSync(path.join(crlf, '.gitignore'), 'node_modules/\r\n.cursor/\r\n')
-  const merged = ensureGitignoreEntries(crlf, ['/.cursor/', '/.processkit/'])
-  assert.deepEqual(merged.added, ['/.processkit/'])
+  writeFileSync(path.join(crlf, '.gitignore'), 'node_modules/\r\n/.cursor/\r\n')
+  const merged = ensureGitignoreEntries(crlf, ['.cursor/', '.processkit/'])
+  assert.deepEqual(merged.added, ['.processkit/'])
   const content = readFileSync(path.join(crlf, '.gitignore'), 'utf8')
-  assert.equal(content, 'node_modules/\r\n.cursor/\r\n/.processkit/\r\n')
+  assert.equal(content, 'node_modules/\r\n/.cursor/\r\n.processkit/\r\n')
 
   // Removal drops only the requested patterns, preserving member lines + EOL.
-  const removed = removeGitignoreEntries(crlf, ['/.processkit/'])
-  assert.deepEqual(removed.removed, ['/.processkit/'])
-  assert.equal(readFileSync(path.join(crlf, '.gitignore'), 'utf8'), 'node_modules/\r\n.cursor/\r\n')
+  const removed = removeGitignoreEntries(crlf, ['.processkit/'])
+  assert.deepEqual(removed.removed, ['.processkit/'])
+  assert.equal(readFileSync(path.join(crlf, '.gitignore'), 'utf8'), 'node_modules/\r\n/.cursor/\r\n')
   assert.equal(canonicalGitignorePattern('/.cursor/'), canonicalGitignorePattern('.cursor'))
 })
 
@@ -684,21 +684,21 @@ test('generatedTargets derives entries from actual writes only', () => {
   const patterns = entries.map((entry) => entry.pattern)
 
   assert.deepEqual(patterns, [
-    '/.cursor/',
-    '/.processkit/',
-    '/.claude.json',
-    '/.claude/',
-    '/.gemini/',
-    '/opencode.jsonc',
+    '.cursor/',
+    '.processkit/',
+    '.claude.json',
+    '.claude/',
+    '.gemini/',
+    'opencode.jsonc',
   ])
-  // Gemini + Antigravity collapse into one /.gemini/; global paths are excluded.
-  assert.equal(patterns.filter((pattern) => pattern === '/.gemini/').length, 1)
+  // Gemini + Antigravity collapse into one .gemini/; global paths are excluded.
+  assert.equal(patterns.filter((pattern) => pattern === '.gemini/').length, 1)
   assert.ok(!patterns.some((pattern) => pattern.includes('codex')))
   // Only opencode.jsonc (actually written) is ignored, not opencode.json.
-  assert.ok(!patterns.includes('/opencode.json'))
+  assert.ok(!patterns.includes('opencode.json'))
   // .processkit/ is the only exclusive entry; everything else is shared.
   for (const entry of entries) {
-    assert.equal(Boolean(entry.shared), entry.pattern !== '/.processkit/')
+    assert.equal(Boolean(entry.shared), entry.pattern !== '.processkit/')
   }
 })
 
@@ -712,19 +712,19 @@ test('manifest records exact ignore entries and status reports missing ones', ()
     readFileSync(path.join(root, '.processkit/install-manifest.json'), 'utf8'),
   )
   assert.deepEqual(manifest.gitignore, [
-    { pattern: '/.cursor/', shared: true },
-    { pattern: '/.processkit/' },
+    { pattern: '.cursor/', shared: true },
+    { pattern: '.processkit/' },
   ])
 
   const healthy = harnessStatus(root)
   assert.ok(healthy.gitignore.every((entry) => entry.present))
 
-  removeGitignoreEntries(root, ['/.processkit/'])
+  removeGitignoreEntries(root, ['.processkit/'])
   const degraded = harnessStatus(root)
-  const missing = degraded.gitignore.find((entry) => entry.pattern === '/.processkit/')
+  const missing = degraded.gitignore.find((entry) => entry.pattern === '.processkit/')
   assert.equal(missing.present, false)
   assert.equal(missing.shared, false)
-  assert.equal(degraded.gitignore.find((entry) => entry.pattern === '/.cursor/').present, true)
+  assert.equal(degraded.gitignore.find((entry) => entry.pattern === '.cursor/').present, true)
 })
 
 test('deinit removes exclusive ignore entries but keeps shared multi-toolkit ones', () => {
@@ -734,16 +734,16 @@ test('deinit removes exclusive ignore entries but keeps shared multi-toolkit one
 
   const entries = generatedTargets(root, [path.join(root, '.cursor', 'mcp.json')])
   const merged = ensureGitignoreEntries(root, entries.map((entry) => entry.pattern))
-  assert.deepEqual(merged.added, ['/.processkit/'], 'equivalent .cursor/ must not duplicate')
+  assert.deepEqual(merged.added, ['.processkit/'], 'equivalent .cursor/ must not duplicate')
   installHarness({ projectRoot: root, type: 'fe', gitignoreEntries: entries })
 
   const dryRun = uninstallHarness({ projectRoot: root })
-  assert.deepEqual(dryRun.gitignoreRemoved, ['/.processkit/'])
-  assert.deepEqual(dryRun.gitignoreKept, ['/.cursor/'])
+  assert.deepEqual(dryRun.gitignoreRemoved, ['.processkit/'])
+  assert.deepEqual(dryRun.gitignoreKept, ['.cursor/'])
   assert.match(readFileSync(path.join(root, '.gitignore'), 'utf8'), /\.processkit/)
 
   const applied = uninstallHarness({ projectRoot: root, yes: true })
-  assert.deepEqual(applied.gitignoreRemoved, ['/.processkit/'])
+  assert.deepEqual(applied.gitignoreRemoved, ['.processkit/'])
   const after = readFileSync(path.join(root, '.gitignore'), 'utf8')
   assert.equal(after, '# member\n.cursor/\nother-toolkit.local.json\n')
 })
@@ -763,10 +763,10 @@ test('CLI init merges gitignore from actual writes and re-init is idempotent', (
   const init = run(['init', '--type=docs', '--target=cursor,claude'])
   assert.equal(init.status, 0, init.stderr)
   const gitignore = readFileSync(path.join(root, '.gitignore'), 'utf8')
-  assert.ok(gitignore.includes('/.cursor/'))
-  assert.ok(gitignore.includes('/.processkit/'))
-  assert.ok(gitignore.includes('/.claude.json'))
-  assert.ok(gitignore.includes('/.claude/'))
+  assert.ok(gitignore.includes('.cursor/'))
+  assert.ok(gitignore.includes('.processkit/'))
+  assert.ok(gitignore.includes('.claude.json'))
+  assert.ok(gitignore.includes('.claude/'))
   assert.ok(!gitignore.includes('.mcp.json'), 'detection-only paths are never ignored')
 
   const again = run(['init', '--type=docs', '--target=cursor,claude'])
@@ -776,16 +776,23 @@ test('CLI init merges gitignore from actual writes and re-init is idempotent', (
   const deinit = run(['deinit'])
   assert.equal(deinit.status, 0, deinit.stderr)
   const after = readFileSync(path.join(root, '.gitignore'), 'utf8')
-  assert.ok(!after.includes('/.processkit/'))
-  assert.ok(after.includes('/.cursor/'), 'shared entries survive deinit')
+  assert.ok(!after.includes('.processkit/'))
+  assert.ok(after.includes('.cursor/'), 'shared entries survive deinit')
+  // DNA SSOT routing rule is kept so other toolkits can keep using it.
+  assert.ok(existsSync(path.join(root, '.cursor/rules/cross-repo-index.mdc')))
 })
 
 test('cross-repo routing rule is installed for every lane', () => {
   for (const type of ['docs', 'fe', 'be']) {
     const root = mkdtempSync(path.join(os.tmpdir(), `processkit-routing-${type}-`))
     const harness = installHarness({ projectRoot: root, type })
-    const rule = path.join(root, '.cursor/rules/processkit-cross-repo-index.mdc')
-    assert.ok(harness.written.includes(rule), `${type} lane must install the routing rule`)
+    const rule = path.join(root, '.cursor/rules/cross-repo-index.mdc')
+    assert.ok(harness.written.includes(rule), `${type} lane must install the DNA SSOT routing rule`)
+    assert.equal(
+      existsSync(path.join(root, '.cursor/rules/processkit-cross-repo-index.mdc')),
+      false,
+      'must not install a duplicate processkit-* routing rule',
+    )
     const body = readFileSync(rule, 'utf8')
     assert.match(body, /HUBDOCS_ROOT/)
     assert.match(body, /codegraph-<key>/)
@@ -793,7 +800,129 @@ test('cross-repo routing rule is installed for every lane', () => {
     assert.match(body, /Never run `codegraph init` in a workspace parent/)
     assert.match(body, /platform-dna codegraph:wire/)
     assert.match(body, /ArtifactGraph stays local-only/)
+    assert.match(body, /platform-repos\.local\.json/)
+    assert.match(body, /legacy-repos\.local\.json/)
+    assert.match(body, /legacy-\*/)
+    assert.match(body, /\/configure-repo-maps/)
+    assert.match(body, /platform map wins/)
+    const configure = path.join(root, '.cursor/skills/configure-repo-maps/SKILL.md')
+    assert.ok(existsSync(configure), `${type} must install /configure-repo-maps`)
+    assert.match(readFileSync(configure, 'utf8'), /\/configure-repo-maps/)
+    assert.match(readFileSync(configure, 'utf8'), /toolkit:configure-repo-maps-thin/)
   }
+})
+
+test('init yields to DNA SSOT /configure-repo-maps without conflict', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-dna-skill-'))
+  const skill = path.join(root, '.cursor/skills/configure-repo-maps/SKILL.md')
+  mkdirSync(path.dirname(skill), { recursive: true })
+  writeFileSync(
+    skill,
+    '---\nname: configure-repo-maps\n---\n\n<!-- platform-dna:configure-repo-maps-ssot -->\n\n# DNA SSOT\n',
+  )
+  const result = installHarness({ projectRoot: root, type: 'docs' })
+  assert.equal(result.conflicts.includes(skill), false, result.conflicts.join('\n'))
+  assert.match(readFileSync(skill, 'utf8'), /platform-dna:configure-repo-maps-ssot/)
+  const manifest = JSON.parse(
+    readFileSync(path.join(root, '.processkit/install-manifest.json'), 'utf8'),
+  )
+  assert.equal(manifest.files['.cursor/skills/configure-repo-maps/SKILL.md'], undefined)
+})
+
+test('repo map routing: platform vs legacy-* system ids', async () => {
+  const {
+    mapKindForSystemId,
+    localMapFileForSystemId,
+    ensureLocalRepoMaps,
+    PLATFORM_LOCAL_MAP,
+    LEGACY_LOCAL_MAP,
+  } = await import('../dist/install/local-maps.js')
+
+  assert.equal(mapKindForSystemId('portal-a'), 'platform')
+  assert.equal(mapKindForSystemId('mairy-fullsco'), 'platform')
+  assert.equal(localMapFileForSystemId('portal-a'), PLATFORM_LOCAL_MAP)
+  assert.equal(mapKindForSystemId('legacy-erp'), 'legacy')
+  assert.equal(mapKindForSystemId('legacy-crm'), 'legacy')
+  assert.equal(localMapFileForSystemId('legacy-erp'), LEGACY_LOCAL_MAP)
+
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-maps-'))
+  const first = ensureLocalRepoMaps(root)
+  assert.deepEqual(first.created.sort(), [LEGACY_LOCAL_MAP, PLATFORM_LOCAL_MAP].sort())
+  assert.deepEqual(first.skipped, [])
+  const platform = JSON.parse(readFileSync(path.join(root, PLATFORM_LOCAL_MAP), 'utf8'))
+  assert.deepEqual(platform.projects, {})
+  writeFileSync(
+    path.join(root, PLATFORM_LOCAL_MAP),
+    JSON.stringify({ projects: { 'portal-a': { root: '/tmp/portal-a' } } }, null, 2) + '\n',
+  )
+  const second = ensureLocalRepoMaps(root)
+  assert.deepEqual(second.created, [])
+  assert.ok(second.skipped.includes(PLATFORM_LOCAL_MAP))
+  assert.ok(second.skipped.includes(LEGACY_LOCAL_MAP))
+  const preserved = JSON.parse(readFileSync(path.join(root, PLATFORM_LOCAL_MAP), 'utf8'))
+  assert.equal(preserved.projects['portal-a'].root, '/tmp/portal-a')
+
+  const gitignore = readFileSync(path.join(root, '.gitignore'), 'utf8')
+  assert.match(gitignore, /platform-repos\.local\.json/)
+  assert.match(gitignore, /legacy-repos\.local\.json/)
+})
+
+test('CLI init ensures local maps without portable catalogs; status reports empty maps', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-init-maps-'))
+  const cli = path.resolve('bin/processkit.mjs')
+  const init = spawnSync(
+    process.execPath,
+    [cli, 'init', '--type=docs', '--target=none', '--project-root', root, '--yes'],
+    { cwd: path.resolve('.'), encoding: 'utf8' },
+  )
+  assert.equal(init.status, 0, init.stderr)
+  assert.ok(existsSync(path.join(root, 'platform-repos.local.json')))
+  assert.ok(existsSync(path.join(root, 'legacy-repos.local.json')))
+  assert.equal(existsSync(path.join(root, 'platform-repos.json')), false)
+  assert.equal(existsSync(path.join(root, 'legacy-repos.json')), false)
+  assert.match(init.stdout, /\/configure-repo-maps/)
+
+  const status = spawnSync(
+    process.execPath,
+    [cli, 'status', '--project-root', root],
+    { cwd: path.resolve('.'), encoding: 'utf8' },
+  )
+  assert.equal(status.status, 0, status.stderr)
+  const body = JSON.parse(status.stdout)
+  assert.equal(body.localMaps.length, 2)
+  assert.ok(body.localMaps.every((m) => m.exists && m.empty))
+  assert.match(status.stderr, /configure-repo-maps/)
+
+  // Second init must not wipe member content
+  writeFileSync(
+    path.join(root, 'platform-repos.local.json'),
+    JSON.stringify({ projects: { portal: { root: '/work/portal' } } }, null, 2) + '\n',
+  )
+  const again = spawnSync(
+    process.execPath,
+    [cli, 'init', '--type=docs', '--target=none', '--project-root', root, '--yes'],
+    { cwd: path.resolve('.'), encoding: 'utf8' },
+  )
+  assert.equal(again.status, 0, again.stderr)
+  const kept = JSON.parse(readFileSync(path.join(root, 'platform-repos.local.json'), 'utf8'))
+  assert.equal(kept.projects.portal.root, '/work/portal')
+
+  const skill = readFileSync(
+    path.join(root, '.cursor/skills/business-process-trace/SKILL.md'),
+    'utf8',
+  )
+  assert.match(skill, /\/configure-repo-maps/)
+  assert.match(skill, /platform-repos\.local\.json/)
+  assert.match(skill, /legacy-repos\.local\.json/)
+  const extract = readFileSync(
+    path.join(root, '.cursor/extracts/business-process-trace.md'),
+    'utf8',
+  )
+  assert.match(extract, /\[mairy-fullsco\]/)
+  assert.match(extract, /platform-repos\.local\.json/)
+  assert.match(extract, /\[legacy-erp\]/)
+  assert.match(extract, /legacy-repos\.local\.json/)
+  assert.match(extract, /\/configure-repo-maps/)
 })
 
 test('lifecycle APIs are exported from the package entry point', async () => {
@@ -802,6 +931,8 @@ test('lifecycle APIs are exported from the package entry point', async () => {
   assert.equal(typeof api.pruneHarness, 'function')
   assert.equal(typeof api.uninstallHarness, 'function')
   assert.equal(typeof api.discoverInstalls, 'function')
+  assert.equal(typeof api.ensureLocalRepoMaps, 'function')
+  assert.equal(typeof api.mapKindForSystemId, 'function')
   assert.equal(api.PROCESSKIT_TOOL_API, 1)
   assert.equal(api.PROCESSKIT_HARNESS_API, 1)
   assert.equal(typeof api.ReadMeasurement, 'function')

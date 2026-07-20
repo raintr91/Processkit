@@ -16,9 +16,24 @@ Do **not** invent missing hops. Curated product journeys stay under **`/journey`
 
 | Load | Skip |
 |------|------|
-| `legacy/project-config.md` progressive | Treating FE docs as architecture SSOT |
+| Progressive map read (needed keys only) | Treating FE docs as architecture SSOT |
 | Cross-repo route/job/event evidence | Writing new product `FLOW-*` without evidence |
-| Step vocabulary in extract `business-process-trace.md` | Full `platform-repos.json` dump |
+| Step vocabulary in extract `business-process-trace.md` | Full `platform-repos.json` / `.local.json` dump |
+
+## Checkout resolution
+
+For each step `[system]`:
+
+| System id | Map |
+|-----------|-----|
+| `legacy-*` (or clear legacy archaeology) | `legacy-repos.local.json` |
+| Otherwise (live portal/api/tests/…) | `platform-repos.local.json` |
+
+In-repo-only traces need no map. Cross-repo with missing/empty `.local.json` or
+missing key → **Gaps** + handoff **`/configure-repo-maps`** (do not guess paths;
+do not bypass an empty map). After maps exist, remind
+`platform-dna codegraph:wire` if `codegraph-<key>` is absent. Ambiguous matches
+→ ask the user or Gaps.
 
 ## Workflow
 
@@ -30,7 +45,7 @@ Do **not** invent missing hops. Curated product journeys stay under **`/journey`
 
 ## Accelerators (optional)
 
-Route per intent (rule `processkit-cross-repo-index.mdc`): never one merged
+Route per intent (rule `cross-repo-index.mdc`): never one merged
 workspace graph — always the correct per-repo index.
 
 ```text
@@ -64,4 +79,5 @@ into context. After that optional's fallback completes, emit exactly one
 
 ## Done
 
-- Verified steps/evidence + process map, or explicit residual gaps listed.
+- Verified steps/evidence + process map, or explicit residual gaps listed
+  (including `/configure-repo-maps` when cross-repo map keys are missing).
