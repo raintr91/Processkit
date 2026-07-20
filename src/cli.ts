@@ -377,7 +377,7 @@ async function main(): Promise<void> {
     if (emptyMaps.length) {
       console.error(
         `local maps empty/missing (${emptyMaps.map((m) => m.file).join(', ')}); ` +
-          'cross-repo → /configure-repo-maps then platform-dna codegraph:wire',
+        'cross-repo → /configure-repo-maps then platform-dna codegraph:wire',
       )
     }
     if (status.compat === 'fail') process.exit(1)
