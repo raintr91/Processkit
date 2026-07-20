@@ -77,10 +77,25 @@ Profiles:
 In-repo-only work needs no map. Cross-repo with empty/missing keys → Gaps +
 `/configure-repo-maps`, then `platform-dna codegraph:wire`.
 
+### Example prompts (`/configure-repo-maps`)
+
+**Platform multi-repo** (writes `platform-repos.local.json`):
+
 ```text
 /configure-repo-maps
-2 portal + 2 API under ~/ws/…; legacy ERP at D:\legacy\erp key legacy-erp.
+2 portal: admin at ~/ws/portal-admin, line at ~/ws/portal-line;
+2 API: core at ~/ws/api-core, scenario at ~/ws/api-scenario;
+docs = ~/ws/base-docs; tests = ~/ws/base-tests.
 ```
+
+**Legacy** (writes `legacy-repos.local.json`):
+
+```text
+/configure-repo-maps
+Legacy ERP is at D:\legacy\erp, key legacy-erp.
+```
+
+Then run `/business-process-trace` or `/business-impact-review` as usual.
 
 ## Managed harness lifecycle
 
