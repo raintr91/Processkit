@@ -59,7 +59,8 @@ export interface InstallManifest {
   schemaVersion: 1
   package: '@platform/processkit'
   packageVersion: string
-  type: ProcesskitType
+  type?: ProcesskitType
+  types?: ProcesskitType[]
   toolApi: number
   harnessApi: number
   installedAt: string
@@ -86,6 +87,7 @@ export interface HarnessStatus {
   packageVersion: string
   installed: boolean
   type: ProcesskitType | null
+  types: ProcesskitType[]
   packageVersionInstalled: string | null
   toolApi: number | null
   harnessApi: number | null
@@ -195,7 +197,11 @@ function readManifest(root: string): InstallManifest | null {
   if (
     data.schemaVersion !== 1 ||
     data.package !== '@platform/processkit' ||
-    !['docs', 'fe', 'be'].includes(data.type ?? '') ||
+    !(
+      (Array.isArray(data.types) &&
+        data.types.every((t) => typeof t === 'string' && ['docs', 'fe', 'be'].includes(t))) ||
+      (typeof data.type === 'string' && ['docs', 'fe', 'be'].includes(data.type))
+    ) ||
     typeof data.packageVersion !== 'string' ||
     typeof data.files !== 'object' ||
     data.files === null
@@ -230,6 +236,7 @@ function readManifest(root: string): InstallManifest | null {
       }
     }
   }
+  if (!data.types && data.type) data.types = [data.type as ProcesskitType]
   return data as InstallManifest
 }
 
@@ -294,6 +301,7 @@ export function harnessStatus(projectRoot?: string): HarnessStatus {
       packageVersion: packageVersion(),
       installed: false,
       type: null,
+      types: [],
       packageVersionInstalled: null,
       toolApi: null,
       harnessApi: null,
@@ -326,7 +334,8 @@ export function harnessStatus(projectRoot?: string): HarnessStatus {
     projectRoot: root,
     packageVersion: packageVersion(),
     installed: true,
-    type: previous.type,
+    type: previous.type ?? (previous.types?.[0] || null),
+    types: previous.types ?? [],
     packageVersionInstalled: previous.packageVersion,
     toolApi: previous.toolApi,
     harnessApi: previous.harnessApi,
@@ -346,7 +355,8 @@ export function harnessStatus(projectRoot?: string): HarnessStatus {
 
 export function installHarness(opts: {
   projectRoot: string
-  type: ProcesskitType
+  type?: ProcesskitType
+  types?: ProcesskitType[]
   force?: boolean
   /** Exact ignore entries this init ensured; recorded for status/deinit. */
   gitignoreEntries?: OwnedGitignoreEntry[]
@@ -361,9 +371,10 @@ export function installHarness(opts: {
     stale: [],
   }
   const files: InstallManifest['files'] = {}
+  const typesToInstall = opts.types ?? (opts.type ? [opts.type] : [])
   const sourceRoots = [
     path.join(packageRoot(), 'harness', 'common'),
-    path.join(packageRoot(), 'harness', opts.type),
+    ...typesToInstall.map((t) => path.join(packageRoot(), 'harness', t)),
   ]
   const sources = sourceRoots.flatMap((sourceRoot) =>
     walk(sourceRoot).map((source) => ({
@@ -425,7 +436,8 @@ export function installHarness(opts: {
     schemaVersion: 1,
     package: '@platform/processkit',
     packageVersion: packageVersion(),
-    type: opts.type,
+    types: typesToInstall,
+    type: typesToInstall[0],
     toolApi: PROCESSKIT_TOOL_API,
     harnessApi: PROCESSKIT_HARNESS_API,
     installedAt: new Date().toISOString(),

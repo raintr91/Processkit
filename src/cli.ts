@@ -41,8 +41,8 @@ function has(name: string): boolean {
 function usage(): never {
   console.log(`processkit ${packageVersion()}
 
-  init [--type=docs|fe|be] [--target=csv|auto|all] [--project-root <path>] [--force] [--yes]
-       # no flags → TTY wizard: agents → lane (docs|fe|be); MCP always local at cwd
+  init [--type=docs,fe,be|all] [--target=csv|auto|all] [--project-root <path>] [--force] [--yes]
+       # no flags → TTY wizard: agents → lanes (docs, fe, be); MCP always local at cwd
   status [--project-root <path>]
   prune [--project-root <path>] [--yes]    # dry-run by default
   deinit [--project-root <path>] [--yes]   # current repo harness + local MCP
@@ -298,9 +298,19 @@ async function main(): Promise<void> {
   }
   if (command === 'init') {
     const root = resolveProjectRoot(arg('--project-root'))
-    const typeFlag = arg('--type') as ProcesskitType | undefined
-    if (typeFlag && !['docs', 'fe', 'be'].includes(typeFlag)) {
-      throw new Error('--type must be docs | fe | be')
+    const typeFlag = arg('--type')
+    let typesFlag: ProcesskitType[] | undefined
+    if (typeFlag) {
+      if (typeFlag === 'all') {
+        typesFlag = ['docs', 'fe', 'be']
+      } else {
+        typesFlag = typeFlag.split(',') as ProcesskitType[]
+        for (const t of typesFlag) {
+          if (!['docs', 'fe', 'be'].includes(t)) {
+            throw new Error('--type must be a comma-separated list of docs, fe, be, or "all"')
+          }
+        }
+      }
     }
     const targetFlag = arg('--target')
     const interactive =
@@ -310,15 +320,15 @@ async function main(): Promise<void> {
       Boolean(process.stdin.isTTY && process.stdout.isTTY)
 
     let agents: AgentId[]
-    let type: ProcesskitType
+    let types: ProcesskitType[]
     if (interactive) {
-      // Wizard order is fixed: agents → lane; Processkit has no tech step.
+      // Wizard order is fixed: agents → lanes; Processkit has no tech step.
       const wizard = await runInitWizard({ cwd: root })
       agents = wizard.agents
-      type = wizard.type
+      types = wizard.types
     } else {
       agents = parseTargets(targetFlag ?? 'auto', detectAgents(root))
-      type = typeFlag ?? 'docs'
+      types = typesFlag ?? ['docs']
     }
 
     const mcp = installAgents({ projectRoot: root, agents })
@@ -356,7 +366,7 @@ async function main(): Promise<void> {
 
     const harness = installHarness({
       projectRoot: root,
-      type,
+      types,
       force: has('--force'),
       gitignoreEntries: ignoreEntries,
     })
@@ -364,7 +374,7 @@ async function main(): Promise<void> {
     for (const file of harness.unchanged) console.log(`  unchanged: ${file}`)
     for (const file of harness.conflicts) console.log(`  conflict: ${file}`)
     for (const file of harness.stale) console.log(`  stale: ${file} (run processkit prune)`)
-    if (type === 'docs') console.log(`updated: ${mergeExtractRegistry(root)}`)
+    if (types.includes('docs')) console.log(`updated: ${mergeExtractRegistry(root)}`)
     console.log(
       '  tip: fill checkout roots with /configure-repo-maps before cross-repo /business-process-trace',
     )

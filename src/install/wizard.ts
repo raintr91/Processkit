@@ -19,7 +19,7 @@ export interface WizardPrompts {
 
 export interface WizardResult {
   agents: AgentId[]
-  type: ProcesskitType
+  types: ProcesskitType[]
 }
 
 export async function runInitWizard(
@@ -40,15 +40,14 @@ export async function runInitWizard(
     })),
   })
 
-  const type = await select<ProcesskitType>({
-    message: 'Which Processkit lane?',
-    defaultIndex: 0,
+  const types = await checkbox<ProcesskitType>({
+    message: 'Which Processkit lanes? (Space toggle, a all, Enter confirm)',
     choices: [
-      { value: 'docs', name: 'docs — process trace + impact review' },
+      { value: 'docs', name: 'docs — process trace + impact review', checked: true },
       { value: 'fe', name: 'fe — impact review only' },
       { value: 'be', name: 'be — impact review only' },
     ],
   })
 
-  return { agents, type }
+  return { agents, types: types.length ? types : ['docs'] }
 }
