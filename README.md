@@ -7,7 +7,7 @@ Standalone MCP/harness package for:
 - `/configure-repo-maps` — NL → machine-local checkout maps (cross-repo)
 - deprecated `/flow-trace` redirect
 
-Optional accelerators: CodeGraph, Hubdocs and ArtifactGraph. Processkit works
+Optional accelerators: CodeGraph, Docskit and ArtifactGraph. Processkit works
 without them through targeted repository search/model analysis. Missing
 optionals produce one schema-validated evidence event per run/optional with
 actual file-read and context-byte metrics; see
@@ -153,7 +153,7 @@ CodeGraph MCP entry and does not require the server to be live.
 ## Portability
 
 Processkit never writes portable `platform-repos.json` / `legacy-repos.json`
-(Platform DNA / Bundlekit own those). It only ensures ignored
+(Platform DNA / Docskit own those). It only ensures ignored
 `platform-repos.local.json` and `legacy-repos.local.json` skeletons so
 cross-repo skills have a place to resolve checkouts regardless of toolkit
 install order.

@@ -19,7 +19,7 @@ export const LOCAL_MAP_FILES = [PLATFORM_LOCAL_MAP, LEGACY_LOCAL_MAP] as const
 const PLATFORM_SCHEMA =
   'https://github.com/raintr91/platform-dna/blob/main/templates/schemas/platform-repos.schema.json'
 const LEGACY_SCHEMA =
-  'https://github.com/raintr91/bundlekit/blob/main/templates/schemas/legacy-repos.schema.json'
+  'https://github.com/raintr91/docskit/blob/main/templates/schemas/legacy-repos.schema.json'
 
 export type RepoMapKind = 'platform' | 'legacy'
 

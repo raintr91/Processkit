@@ -794,7 +794,7 @@ test('cross-repo routing rule is installed for every lane', () => {
       'must not install a duplicate processkit-* routing rule',
     )
     const body = readFileSync(rule, 'utf8')
-    assert.match(body, /HUBDOCS_ROOT/)
+    assert.match(body, /DOCSKIT_ROOT/)
     assert.match(body, /codegraph-<key>/)
     assert.match(body, /CODEGENKIT_DOCS_ROOT/)
     assert.match(body, /Never run `codegraph init` in a workspace parent/)
@@ -1069,7 +1069,7 @@ test('missing optional event validates measured metrics and deduplicates run/opt
   })
   assert.deepEqual(validateMissingOptionalEvent(event), { ok: true, errors: [] })
   assert.equal(emitter.emit(input), null)
-  assert.ok(emitter.emit({ ...input, optional: 'hubdocs' }))
+  assert.ok(emitter.emit({ ...input, optional: 'docskit' }))
 
   const schema = JSON.parse(
     readFileSync(path.resolve('schemas/missing-optional-event.schema.json'), 'utf8'),
@@ -1084,7 +1084,7 @@ for (const optionalServers of [
   { codegraph: { command: 'codegraph' } },
   {
     codegraph: { command: 'codegraph' },
-    hubdocs: { command: 'hubdocs-mcp' },
+    docskit: { command: 'docskit-mcp' },
     artifactgraph: { command: 'artifactgraph-mcp' },
   },
 ]) {

@@ -4,7 +4,7 @@
   "version": "0.4.0",
   "types": ["docs", "fe", "be"],
   "requires": [],
-  "optional": ["codegraph", "@platform/hubdocs", "@platform/artifactgraph"],
+  "optional": ["codegraph", "@platform/docskit", "@platform/artifactgraph"],
   "tools": [
     "business_process_validate",
     "business_impact_validate",

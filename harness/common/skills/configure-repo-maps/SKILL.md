@@ -22,7 +22,7 @@ correct machine-local map(s). **Do not** ask members to hand-edit JSON.
 | Legacy / brownfield / keys `legacy-*` | `legacy-repos.local.json` |
 
 Portable catalogs (`platform-repos.json`, `legacy-repos.json`) stay with DNA /
-Bundlekit — never put absolute machine paths in portable maps.
+Docskit — never put absolute machine paths in portable maps.
 
 ## Workflow
 

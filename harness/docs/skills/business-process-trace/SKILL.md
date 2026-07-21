@@ -10,7 +10,13 @@ disable-model-invocation: true
 Trace an **observed** end-to-end business process through legacy/code evidence.
 Do **not** invent missing hops. Curated product journeys stay under **`/journey`** (`FLOW-*`).
 
-**Owner:** Processkit · Accelerators optional: CodeGraph · Hubdocs · ArtifactGraph
+**Owner:** Processkit · Accelerators optional: CodeGraph · Docskit · ArtifactGraph
+
+## Modifiers (If /legacy is used)
+Khi gọi kèm `/legacy` (vd: `/legacy /business-process-trace`):
+- Toàn bộ quá trình truy vết (trace) sẽ mặc định hướng về hệ thống cũ.
+- Tham chiếu source code từ `legacy-repos.local.json`.
+- Ghi nhận evidence với tư cách là "tài liệu khảo cổ", không dùng để build tính năng mới trực tiếp.
 
 ## Load
 
@@ -54,7 +60,7 @@ if CodeGraph available: symbol/caller/call-chain lookup — for repo X use its
   repo's index; unindexed repo → report `cd <root> && codegraph init`
 else: targeted local search/read; unresolved hop → compact model evidence slice
 
-if Hubdocs available: resolve CMP/CTR/FLOW IDs and doc paths via HUBDOCS_ROOT
+if Docskit available: resolve CMP/CTR/FLOW IDs and doc paths via DOCSKIT_ROOT
   (never CodeGraph for architecture Markdown)
 else: repository path conventions/search
 

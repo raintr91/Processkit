@@ -16,9 +16,9 @@ Checkout routing (`cross-repo-index.mdc`): `legacy-*` →
 Ambiguous or missing keys → ask / Gaps + `/configure-repo-maps` — never invent
 paths. Processkit does not write cross-repo CodeGraph MCP entries.
 
-CodeGraph, Hubdocs and ArtifactGraph are optional accelerators; route them per
+CodeGraph, Docskit and ArtifactGraph are optional accelerators; route them per
 repo/intent as defined in `cross-repo-index.mdc` (architecture →
-Hubdocs, IR/registry → pointer kits, symbols of repo X → `codegraph-<key>` for
+Docskit, IR/registry → pointer kits, symbols of repo X → `codegraph-<key>` for
 X). Missing tools must fall back to targeted local search/model analysis and
 explicit residual gaps. Per run/optional pair, count actual successful file reads and raw context
 bytes, then emit exactly one `processkit.missing-optional` event conforming to

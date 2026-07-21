@@ -69,7 +69,7 @@ if CodeGraph available: changed symbols + callers + call graph — for repo X us
   open repo's index; unindexed repo → report `cd <root> && codegraph init`
 else: targeted repository search/read
 
-if Hubdocs available: map process steps to CMP/CTR/FLOW docs via HUBDOCS_ROOT
+if Docskit available: map process steps to CMP/CTR/FLOW docs via DOCSKIT_ROOT
   (never CodeGraph for architecture Markdown)
 else: repository conventions/search
 

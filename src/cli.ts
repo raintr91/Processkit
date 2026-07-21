@@ -1,5 +1,6 @@
 import path from 'node:path'
 import os from 'node:os'
+import { execSync } from 'node:child_process'
 import { packageRoot, packageVersion, resolveProjectRoot } from './config/project-root.js'
 import { uninstallCursorMcp } from './install/cursor-mcp.js'
 import {
@@ -298,6 +299,18 @@ async function main(): Promise<void> {
   }
   if (command === 'init') {
     const root = resolveProjectRoot(arg('--project-root'))
+
+    // --- Ensure Platform DNA ---
+    try {
+      execSync('platform-dna version', { stdio: 'ignore' })
+    } catch {
+      console.log('\\n[processkit] platform-dna not found globally. Installing...')
+      execSync('curl -fsSL https://raw.githubusercontent.com/raintr91/platform-dna/main/install.sh | bash', { stdio: 'inherit' })
+    }
+    console.log('[processkit] Ensuring platform-dna is initialized in workspace...')
+    execSync('platform-dna init --yes', { cwd: root, stdio: 'inherit' })
+    // ---------------------------
+
     const typeFlag = arg('--type')
     let typesFlag: ProcesskitType[] | undefined
     if (typeFlag) {
@@ -344,7 +357,7 @@ async function main(): Promise<void> {
     }
 
     // Machine-local checkout maps: create-if-missing only (never overwrite).
-    // Portable platform-repos.json / legacy-repos.json stay DNA / Bundlekit-owned.
+    // Portable platform-repos.json / legacy-repos.json stay DNA / Docskit-owned.
     const localMaps = ensureLocalRepoMaps(root)
     for (const file of localMaps.created) console.log(`  ensured: ${file}`)
     for (const file of localMaps.skipped) console.log(`  map exists: ${file}`)

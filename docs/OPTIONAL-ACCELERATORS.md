@@ -1,6 +1,6 @@
 # Optional accelerator fallback evidence
 
-CodeGraph, Hubdocs and ArtifactGraph are optional. A missing accelerator must
+CodeGraph, Docskit and ArtifactGraph are optional. A missing accelerator must
 not stop a Processkit trace or review.
 
 For each run, assign one stable `runId`. If an optional MCP is unavailable:
@@ -52,7 +52,7 @@ repository into one workspace graph. `init` installs the always-apply rule
 every lane so Processkit-only installs still have the contract; when DNA is
 already present the same file is shared (no second `processkit-*` rule):
 
-- architecture ID / C4 path → Hubdocs (`HUBDOCS_ROOT`), never CodeGraph;
+- architecture ID / C4 path → Docskit (`DOCSKIT_ROOT`), never CodeGraph;
 - IR / registry / generation → pointer kits (`CODEGENKIT_DOCS_ROOT`,
   `TESTKIT_DOCS_ROOT`, `TESTKIT_TESTS_ROOT`);
 - symbol / call-graph of repo `X` → that repo's own `codegraph-<key>` server

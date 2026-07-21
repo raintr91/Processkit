@@ -1,5 +1,5 @@
 /**
- * Zero-dep TTY prompts — ↑↓ + Space + Enter (Hubdocs pattern).
+ * Zero-dep TTY prompts — ↑↓ + Space + Enter (Docskit pattern).
  */
 
 export interface CheckboxChoice<T extends string = string> {

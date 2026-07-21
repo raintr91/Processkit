@@ -1,5 +1,5 @@
 /**
- * `processkit init` wizard (Hubdocs pattern), fixed order:
+ * `processkit init` wizard (Docskit pattern), fixed order:
  *
  *   1. Agents — checkbox, detected agents pre-checked.
  *   2. Lane — docs | fe | be.

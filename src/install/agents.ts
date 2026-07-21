@@ -1,5 +1,5 @@
 /**
- * Wire the Processkit MCP into supported agent configurations (Hubdocs pattern).
+ * Wire the Processkit MCP into supported agent configurations (Docskit pattern).
  *
  * Agents: claude | cursor | codex | opencode | hermes | gemini | antigravity | kiro | kilo
  *

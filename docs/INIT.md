@@ -41,7 +41,7 @@ The command:
    - `legacy-repos.local.json` — same
    - merges both patterns into `.gitignore` (shared)
    - does **not** seed portable `platform-repos.json` / `legacy-repos.json`
-     (Platform DNA / Bundlekit own those);
+     (Platform DNA / Docskit own those);
 3. merges the generated local targets into `.gitignore` (Platform DNA
    contract): entries derive from the files this init actually wrote — always
    `.cursor/` (shared) and `.processkit/` (exclusive) plus the selected
