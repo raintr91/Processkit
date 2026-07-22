@@ -802,9 +802,9 @@ test('package manifests stay version-aligned', () => {
   const pkg = JSON.parse(readFileSync(path.resolve('package.json'), 'utf8'))
   const mcpPkg = JSON.parse(readFileSync(path.resolve('mcp-package.json'), 'utf8'))
   const server = readFileSync(path.resolve('src/mcp/server.ts'), 'utf8')
-  assert.equal(pkg.version, '0.4.0')
+  assert.ok(pkg.version)
   assert.equal(mcpPkg.version, pkg.version)
-  assert.match(server, new RegExp(`version: '${pkg.version.replaceAll('.', '\\.')}'`))
+  assert.match(server, /version:\s*packageVersion\(\)/)
 })
 
 test('0.3.0 unnamespaced schema becomes stale and prune-safe on re-init', () => {

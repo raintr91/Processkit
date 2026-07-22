@@ -300,21 +300,7 @@ async function main(): Promise<void> {
   if (command === 'init') {
     const root = resolveProjectRoot(arg('--project-root'))
 
-    // --- Require Platform DNA ---
-    try {
-      execSync('platform-dna version', { stdio: 'ignore' })
-    } catch {
-      console.error('\n[processkit] Error: platform-dna is required but not found.')
-      console.error('Platform DNA is needed to manage repository maps and cross-repo routing.')
-      console.error('\nPlease install and initialize it using the following steps:\n')
-      console.error('  1. curl -fsSL https://raw.githubusercontent.com/raintr91/platform-dna/main/install.sh | bash')
-      console.error('  2. platform-dna init\n')
-      process.exit(1)
-    }
-    
-    console.log('[processkit] Ensuring platform-dna is initialized in workspace...')
-    execSync('platform-dna init --yes', { cwd: root, stdio: 'inherit' })
-    // ----------------------------
+
 
     const typeFlag = arg('--type')
     let typesFlag: ProcesskitType[] | undefined
@@ -382,9 +368,13 @@ async function main(): Promise<void> {
     for (const file of harness.conflicts) console.log(`  conflict: ${file}`)
     for (const file of harness.stale) console.log(`  stale: ${file} (run processkit prune)`)
     if (types.includes('docs')) console.log(`updated: ${mergeExtractRegistry(root)}`)
-    console.log(
-      '  tip: fill checkout roots with /configure-repo-maps before cross-repo /business-process-trace',
-    )
+    console.log('\n  ---')
+    console.log('  tip: Processkit cross-repo routing relies on Platform DNA.')
+    console.log('       If not already done, please install and initialize it:')
+    console.log('       1. curl -fsSL https://raw.githubusercontent.com/raintr91/platform-dna/main/install.sh | bash')
+    console.log('       2. platform-dna init')
+    console.log('       Then use /configure-repo-maps to set up your repository roots.')
+    console.log('  ---')
     return
   }
   if (command === 'status') {
