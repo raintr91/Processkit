@@ -778,152 +778,11 @@ test('CLI init merges gitignore from actual writes and re-init is idempotent', (
   const after = readFileSync(path.join(root, '.gitignore'), 'utf8')
   assert.ok(!after.includes('.processkit/'))
   assert.ok(after.includes('.cursor/'), 'shared entries survive deinit')
-  // DNA SSOT routing rule is kept so other toolkits can keep using it.
-  assert.ok(existsSync(path.join(root, '.cursor/rules/cross-repo-index.mdc')))
 })
 
-test('cross-repo routing rule is installed for every lane', () => {
-  for (const type of ['docs', 'fe', 'be']) {
-    const root = mkdtempSync(path.join(os.tmpdir(), `processkit-routing-${type}-`))
-    const harness = installHarness({ projectRoot: root, type })
-    const rule = path.join(root, '.cursor/rules/cross-repo-index.mdc')
-    assert.ok(harness.written.includes(rule), `${type} lane must install the DNA SSOT routing rule`)
-    assert.equal(
-      existsSync(path.join(root, '.cursor/rules/processkit-cross-repo-index.mdc')),
-      false,
-      'must not install a duplicate processkit-* routing rule',
-    )
-    const body = readFileSync(rule, 'utf8')
-    assert.match(body, /DOCSKIT_ROOT/)
-    assert.match(body, /codegraph-<key>/)
-    assert.match(body, /CODEGENKIT_DOCS_ROOT/)
-    assert.match(body, /Never run `codegraph init` in a workspace parent/)
-    assert.match(body, /platform-dna codegraph:wire/)
-    assert.match(body, /ArtifactGraph stays local-only/)
-    assert.match(body, /platform-repos\.local\.json/)
-    assert.match(body, /legacy-repos\.local\.json/)
-    assert.match(body, /legacy-\*/)
-    assert.match(body, /\/configure-repo-maps/)
-    assert.match(body, /platform map wins/)
-    const configure = path.join(root, '.cursor/skills/configure-repo-maps/SKILL.md')
-    assert.ok(existsSync(configure), `${type} must install /configure-repo-maps`)
-    assert.match(readFileSync(configure, 'utf8'), /\/configure-repo-maps/)
-    assert.match(readFileSync(configure, 'utf8'), /toolkit:configure-repo-maps-thin/)
-  }
-})
 
-test('init yields to DNA SSOT /configure-repo-maps without conflict', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-dna-skill-'))
-  const skill = path.join(root, '.cursor/skills/configure-repo-maps/SKILL.md')
-  mkdirSync(path.dirname(skill), { recursive: true })
-  writeFileSync(
-    skill,
-    '---\nname: configure-repo-maps\n---\n\n<!-- platform-dna:configure-repo-maps-ssot -->\n\n# DNA SSOT\n',
-  )
-  const result = installHarness({ projectRoot: root, type: 'docs' })
-  assert.equal(result.conflicts.includes(skill), false, result.conflicts.join('\n'))
-  assert.match(readFileSync(skill, 'utf8'), /platform-dna:configure-repo-maps-ssot/)
-  const manifest = JSON.parse(
-    readFileSync(path.join(root, '.processkit/install-manifest.json'), 'utf8'),
-  )
-  assert.equal(manifest.files['.cursor/skills/configure-repo-maps/SKILL.md'], undefined)
-})
 
-test('repo map routing: platform vs legacy-* system ids', async () => {
-  const {
-    mapKindForSystemId,
-    localMapFileForSystemId,
-    ensureLocalRepoMaps,
-    PLATFORM_LOCAL_MAP,
-    LEGACY_LOCAL_MAP,
-  } = await import('../dist/install/local-maps.js')
 
-  assert.equal(mapKindForSystemId('portal-a'), 'platform')
-  assert.equal(mapKindForSystemId('mairy-fullsco'), 'platform')
-  assert.equal(localMapFileForSystemId('portal-a'), PLATFORM_LOCAL_MAP)
-  assert.equal(mapKindForSystemId('legacy-erp'), 'legacy')
-  assert.equal(mapKindForSystemId('legacy-crm'), 'legacy')
-  assert.equal(localMapFileForSystemId('legacy-erp'), LEGACY_LOCAL_MAP)
-
-  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-maps-'))
-  const first = ensureLocalRepoMaps(root)
-  assert.deepEqual(first.created.sort(), [LEGACY_LOCAL_MAP, PLATFORM_LOCAL_MAP].sort())
-  assert.deepEqual(first.skipped, [])
-  const platform = JSON.parse(readFileSync(path.join(root, PLATFORM_LOCAL_MAP), 'utf8'))
-  assert.deepEqual(platform.projects, {})
-  writeFileSync(
-    path.join(root, PLATFORM_LOCAL_MAP),
-    JSON.stringify({ projects: { 'portal-a': { root: '/tmp/portal-a' } } }, null, 2) + '\n',
-  )
-  const second = ensureLocalRepoMaps(root)
-  assert.deepEqual(second.created, [])
-  assert.ok(second.skipped.includes(PLATFORM_LOCAL_MAP))
-  assert.ok(second.skipped.includes(LEGACY_LOCAL_MAP))
-  const preserved = JSON.parse(readFileSync(path.join(root, PLATFORM_LOCAL_MAP), 'utf8'))
-  assert.equal(preserved.projects['portal-a'].root, '/tmp/portal-a')
-
-  const gitignore = readFileSync(path.join(root, '.gitignore'), 'utf8')
-  assert.match(gitignore, /platform-repos\.local\.json/)
-  assert.match(gitignore, /legacy-repos\.local\.json/)
-})
-
-test('CLI init ensures local maps without portable catalogs; status reports empty maps', () => {
-  const root = mkdtempSync(path.join(os.tmpdir(), 'processkit-init-maps-'))
-  const cli = path.resolve('bin/processkit.mjs')
-  const init = spawnSync(
-    process.execPath,
-    [cli, 'init', '--type=docs', '--target=none', '--project-root', root, '--yes'],
-    { cwd: path.resolve('.'), encoding: 'utf8' },
-  )
-  assert.equal(init.status, 0, init.stderr)
-  assert.ok(existsSync(path.join(root, 'platform-repos.local.json')))
-  assert.ok(existsSync(path.join(root, 'legacy-repos.local.json')))
-  assert.equal(existsSync(path.join(root, 'platform-repos.json')), false)
-  assert.equal(existsSync(path.join(root, 'legacy-repos.json')), false)
-  assert.match(init.stdout, /\/configure-repo-maps/)
-
-  const status = spawnSync(
-    process.execPath,
-    [cli, 'status', '--project-root', root],
-    { cwd: path.resolve('.'), encoding: 'utf8' },
-  )
-  assert.equal(status.status, 0, status.stderr)
-  const body = JSON.parse(status.stdout)
-  assert.equal(body.localMaps.length, 2)
-  assert.ok(body.localMaps.every((m) => m.exists && m.empty))
-  assert.match(status.stderr, /configure-repo-maps/)
-
-  // Second init must not wipe member content
-  writeFileSync(
-    path.join(root, 'platform-repos.local.json'),
-    JSON.stringify({ projects: { portal: { root: '/work/portal' } } }, null, 2) + '\n',
-  )
-  const again = spawnSync(
-    process.execPath,
-    [cli, 'init', '--type=docs', '--target=none', '--project-root', root, '--yes'],
-    { cwd: path.resolve('.'), encoding: 'utf8' },
-  )
-  assert.equal(again.status, 0, again.stderr)
-  const kept = JSON.parse(readFileSync(path.join(root, 'platform-repos.local.json'), 'utf8'))
-  assert.equal(kept.projects.portal.root, '/work/portal')
-
-  const skill = readFileSync(
-    path.join(root, '.cursor/skills/business-process-trace/SKILL.md'),
-    'utf8',
-  )
-  assert.match(skill, /\/configure-repo-maps/)
-  assert.match(skill, /platform-repos\.local\.json/)
-  assert.match(skill, /legacy-repos\.local\.json/)
-  const extract = readFileSync(
-    path.join(root, '.cursor/extracts/business-process-trace.md'),
-    'utf8',
-  )
-  assert.match(extract, /\[mairy-fullsco\]/)
-  assert.match(extract, /platform-repos\.local\.json/)
-  assert.match(extract, /\[legacy-erp\]/)
-  assert.match(extract, /legacy-repos\.local\.json/)
-  assert.match(extract, /\/configure-repo-maps/)
-})
 
 test('lifecycle APIs are exported from the package entry point', async () => {
   const api = await import('../dist/index.js')
@@ -931,8 +790,7 @@ test('lifecycle APIs are exported from the package entry point', async () => {
   assert.equal(typeof api.pruneHarness, 'function')
   assert.equal(typeof api.uninstallHarness, 'function')
   assert.equal(typeof api.discoverInstalls, 'function')
-  assert.equal(typeof api.ensureLocalRepoMaps, 'function')
-  assert.equal(typeof api.mapKindForSystemId, 'function')
+
   assert.equal(api.PROCESSKIT_TOOL_API, 1)
   assert.equal(api.PROCESSKIT_HARNESS_API, 1)
   assert.equal(typeof api.ReadMeasurement, 'function')

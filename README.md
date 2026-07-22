@@ -15,9 +15,18 @@ actual file-read and context-byte metrics; see
 
 ## Quick start (member)
 
+Processkit relies on **Platform DNA** to manage repository maps and cross-repo routing. You must install and initialize Platform DNA before using Processkit.
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/raintr91/Processkit/main/install.sh | bash
+# 1. Install Platform DNA
+curl -fsSL https://raw.githubusercontent.com/raintr91/platform-dna/main/install.sh | bash
+
+# 2. Initialize Platform DNA in your workspace
 cd /path/to/project
+platform-dna init
+
+# 3. Install Processkit
+curl -fsSL https://raw.githubusercontent.com/raintr91/Processkit/main/install.sh | bash
 processkit init        # wizard: agents → lane (docs|fe|be)
 ```
 

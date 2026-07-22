@@ -55,20 +55,7 @@ export type {
   OwnedGitignoreEntry,
   RemoveGitignoreResult,
 } from './install/gitignore.js'
-export {
-  ensureLocalRepoMaps,
-  localMapFileForSystemId,
-  localMapsStatus,
-  mapKindForSystemId,
-  LEGACY_LOCAL_MAP,
-  LOCAL_MAP_FILES,
-  PLATFORM_LOCAL_MAP,
-} from './install/local-maps.js'
-export type {
-  EnsureLocalRepoMapsResult,
-  LocalMapStatus,
-  RepoMapKind,
-} from './install/local-maps.js'
+
 export {
   discoverInstalls,
   forgetInstall,

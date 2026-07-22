@@ -22,7 +22,7 @@ import {
 import { mergeExtractRegistry } from './install/extract-registry.js'
 import { discoverInstalls, ledgerPath, readLedger, removeLedger } from './install/ledger.js'
 import { ensureGitignoreEntries, generatedTargets } from './install/gitignore.js'
-import { ensureLocalRepoMaps } from './install/local-maps.js'
+
 import { scopeUnifiedDiff, validateBusinessProcess, validateImpactReport } from './process/validate.js'
 import { lstatSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
@@ -300,16 +300,21 @@ async function main(): Promise<void> {
   if (command === 'init') {
     const root = resolveProjectRoot(arg('--project-root'))
 
-    // --- Ensure Platform DNA ---
+    // --- Require Platform DNA ---
     try {
       execSync('platform-dna version', { stdio: 'ignore' })
     } catch {
-      console.log('\\n[processkit] platform-dna not found globally. Installing...')
-      execSync('curl -fsSL https://raw.githubusercontent.com/raintr91/platform-dna/main/install.sh | bash', { stdio: 'inherit' })
+      console.error('\n[processkit] Error: platform-dna is required but not found.')
+      console.error('Platform DNA is needed to manage repository maps and cross-repo routing.')
+      console.error('\nPlease install and initialize it using the following steps:\n')
+      console.error('  1. curl -fsSL https://raw.githubusercontent.com/raintr91/platform-dna/main/install.sh | bash')
+      console.error('  2. platform-dna init\n')
+      process.exit(1)
     }
+    
     console.log('[processkit] Ensuring platform-dna is initialized in workspace...')
     execSync('platform-dna init --yes', { cwd: root, stdio: 'inherit' })
-    // ---------------------------
+    // ----------------------------
 
     const typeFlag = arg('--type')
     let typesFlag: ProcesskitType[] | undefined
@@ -356,24 +361,13 @@ async function main(): Promise<void> {
       )
     }
 
-    // Machine-local checkout maps: create-if-missing only (never overwrite).
-    // Portable platform-repos.json / legacy-repos.json stay DNA / Docskit-owned.
-    const localMaps = ensureLocalRepoMaps(root)
-    for (const file of localMaps.created) console.log(`  ensured: ${file}`)
-    for (const file of localMaps.skipped) console.log(`  map exists: ${file}`)
-    for (const added of localMaps.gitignoreAdded) {
-      console.log(`  gitignore: added ${added}`)
-    }
-
-    // Ignore entries derive from the local targets this init actually wrote,
-    // plus shared local-map patterns from ensureLocalRepoMaps.
+    // Ignore entries derive from the local targets this init actually wrote.
     const ignoreEntries = [
       ...generatedTargets(root, mcp.written.map((written) => written.path)),
-      ...localMaps.gitignoreEntries,
     ]
     const gitignore = ensureGitignoreEntries(root, ignoreEntries.map((entry) => entry.pattern))
     for (const added of gitignore.added) console.log(`  gitignore: added ${added}`)
-    if (!gitignore.changed && !localMaps.gitignoreAdded.length) {
+    if (!gitignore.changed) {
       console.log(`  gitignore: unchanged ${gitignore.file}`)
     }
 
@@ -396,13 +390,7 @@ async function main(): Promise<void> {
   if (command === 'status') {
     const status = harnessStatus(arg('--project-root'))
     console.log(JSON.stringify(status, null, 2))
-    const emptyMaps = status.localMaps.filter((map) => map.empty)
-    if (emptyMaps.length) {
-      console.error(
-        `local maps empty/missing (${emptyMaps.map((m) => m.file).join(', ')}); ` +
-        'cross-repo → /configure-repo-maps then platform-dna codegraph:wire',
-      )
-    }
+
     if (status.compat === 'fail') process.exit(1)
     return
   }

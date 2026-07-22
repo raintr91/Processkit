@@ -18,13 +18,7 @@ import {
   type OwnedGitignoreEntry,
 } from './gitignore.js'
 import { forgetInstall, recordInstall } from './ledger.js'
-import { localMapsStatus, type LocalMapStatus } from './local-maps.js'
-import {
-  CONFIGURE_REPO_MAPS_REL,
-  CROSS_REPO_INDEX_REL,
-  isDnaConfigureRepoMapsSsot,
-  isDnaCrossRepoIndexSsot,
-} from './configure-repo-maps.js'
+
 
 export type ProcesskitType = 'docs' | 'fe' | 'be'
 export const PROCESSKIT_TOOL_API = 1
@@ -33,20 +27,16 @@ export const INSTALL_MANIFEST_PATH = '.processkit/install-manifest.json'
 const NEVER_PRUNE = new Set([
   'platform-repos.json',
   '.cursor/extracts/extract-registry.json',
-  // DNA SSOT routing rule — Processkit may install it for independence but must
-  // never delete it on deinit (DNA or another toolkit may still rely on it).
-  '.cursor/rules/cross-repo-index.mdc',
 ])
 
 export const SKILLS_BY_TYPE: Record<ProcesskitType, string[]> = {
   docs: [
     'business-process-trace',
     'business-impact-review',
-    'configure-repo-maps',
     'flow-trace',
   ],
-  fe: ['business-impact-review', 'configure-repo-maps'],
-  be: ['business-impact-review', 'configure-repo-maps'],
+  fe: ['business-impact-review'],
+  be: ['business-impact-review'],
 }
 
 export interface ManagedFile {
@@ -96,8 +86,6 @@ export interface HarnessStatus {
   modified: string[]
   stale: string[]
   gitignore: GitignoreEntryStatus[]
-  /** Machine-local checkout maps; empty/missing → cross-repo needs /configure-repo-maps. */
-  localMaps: LocalMapStatus[]
   compat: 'ok' | 'warn' | 'fail'
 }
 
@@ -310,7 +298,6 @@ export function harnessStatus(projectRoot?: string): HarnessStatus {
       modified,
       stale,
       gitignore: [],
-      localMaps: localMapsStatus(root),
       compat: 'warn',
     }
   }
@@ -344,7 +331,6 @@ export function harnessStatus(projectRoot?: string): HarnessStatus {
     modified,
     stale,
     gitignore: gitignoreStatus(root, previous),
-    localMaps: localMapsStatus(root),
     compat: !apiCompatible
       ? 'fail'
       : previous.packageVersion === packageVersion()
@@ -403,14 +389,7 @@ export function installHarness(opts: {
         result.unchanged.push(target)
         continue
       }
-      // DNA SSOT already installed — keep it; do not claim or conflict.
-      if (
-        (normalizedRel === CONFIGURE_REPO_MAPS_REL && isDnaConfigureRepoMapsSsot(current)) ||
-        (normalizedRel === CROSS_REPO_INDEX_REL && isDnaCrossRepoIndexSsot(current))
-      ) {
-        result.unchanged.push(target)
-        continue
-      }
+
       const safeUpdate = previous?.files[targetRel]?.sha256 === hash(current)
       if (!opts.force && !safeUpdate) {
         result.conflicts.push(target)
