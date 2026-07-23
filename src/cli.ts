@@ -359,6 +359,7 @@ async function main(): Promise<void> {
 
     const harness = installHarness({
       projectRoot: root,
+      targets: agents,
       types,
       force: has('--force'),
       gitignoreEntries: ignoreEntries,

@@ -18,6 +18,7 @@ import {
   type OwnedGitignoreEntry,
 } from './gitignore.js'
 import { forgetInstall, recordInstall } from './ledger.js'
+import { AGENT_DIRS, type AgentId } from './agents.js'
 
 
 export type ProcesskitType = 'docs' | 'fe' | 'be'
@@ -346,6 +347,7 @@ export function installHarness(opts: {
   force?: boolean
   /** Exact ignore entries this init ensured; recorded for status/deinit. */
   gitignoreEntries?: OwnedGitignoreEntry[]
+  targets?: string[]
 }): HarnessInstallResult {
   const root = path.resolve(opts.projectRoot)
   const previous = readManifest(root)
@@ -362,16 +364,24 @@ export function installHarness(opts: {
     path.join(packageRoot(), 'harness', 'common'),
     ...typesToInstall.map((t) => path.join(packageRoot(), 'harness', t)),
   ]
+  const agentDirList =
+    opts.targets?.flatMap((target) => AGENT_DIRS[target as AgentId] || []) || []
+  const dirs = agentDirList.length > 0 ? Array.from(new Set(agentDirList)) : ['.cursor']
+
   const sources = sourceRoots.flatMap((sourceRoot) =>
-    walk(sourceRoot).map((source) => ({
-      source,
-      targetRel: path.join('.cursor', path.relative(sourceRoot, source)).split(path.sep).join('/'),
-    })),
+    walk(sourceRoot).flatMap((source) => 
+      dirs.map(dir => ({
+        source,
+        targetRel: path.join(dir, path.relative(sourceRoot, source)).split(path.sep).join('/'),
+      }))
+    ),
   )
-  sources.push({
-    source: path.join(packageRoot(), 'schemas', 'missing-optional-event.schema.json'),
-    targetRel: '.cursor/schemas/processkit/missing-optional-event.schema.json',
-  })
+  for (const dir of dirs) {
+    sources.push({
+      source: path.join(packageRoot(), 'schemas', 'missing-optional-event.schema.json'),
+      targetRel: `${dir}/schemas/processkit/missing-optional-event.schema.json`,
+    })
+  }
 
   for (const { source, targetRel } of sources) {
     if (path.basename(source) === 'extract-registry.processkit.json') continue

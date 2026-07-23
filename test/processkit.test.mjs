@@ -525,27 +525,28 @@ test('init wizard asks agents first (detected pre-checked), then lane, no tech s
     cwd: root,
     prompts: {
       checkbox: async (opts) => {
-        calls.push('agents')
-        assert.match(opts.message, /agents/i)
-        const cursor = opts.choices.find((choice) => choice.value === 'cursor')
-        assert.ok(cursor, 'cursor must be offered')
-        assert.equal(cursor.checked, true, 'detected agent must be pre-checked')
-        assert.match(cursor.name, /detected/)
-        return ['cursor', 'codex']
-      },
-      select: async (opts) => {
-        calls.push('lane')
-        assert.deepEqual(
-          opts.choices.map((choice) => choice.value),
-          ['docs', 'fe', 'be'],
-        )
-        return 'be'
+        if (opts.message.includes('agents')) {
+          calls.push('agents')
+          assert.match(opts.message, /agents/i)
+          const cursor = opts.choices.find((choice) => choice.value === 'cursor')
+          assert.ok(cursor, 'cursor must be offered')
+          assert.equal(cursor.checked, true, 'detected agent must be pre-checked')
+          assert.match(cursor.name, /detected/)
+          return ['cursor', 'codex']
+        } else {
+          calls.push('lane')
+          assert.deepEqual(
+            opts.choices.map((choice) => choice.value),
+            ['docs', 'fe', 'be'],
+          )
+          return ['be']
+        }
       },
     },
   })
 
   assert.deepEqual(calls, ['agents', 'lane'], 'wizard order must be agents → lane')
-  assert.deepEqual(result, { agents: ['cursor', 'codex'], type: 'be' })
+  assert.deepEqual(result, { agents: ['cursor', 'codex'], types: ['be'] })
 })
 
 test('installAgents writes project-local MCP configs for every selected agent', () => {
@@ -684,16 +685,22 @@ test('generatedTargets derives entries from actual writes only', () => {
   const patterns = entries.map((entry) => entry.pattern)
 
   assert.deepEqual(patterns, [
-    '.cursor/',
     '.processkit/',
-    '.claude.json',
+    '.docskit/',
     '.claude/',
+    '.cursor/',
+    '.codex/',
+    '.opencode/',
+    '.hermes/',
     '.gemini/',
+    '.agents/',
+    '.kiro/',
+    '.kilocode/',
+    '.claude.json',
     'opencode.jsonc',
   ])
   // Gemini + Antigravity collapse into one .gemini/; global paths are excluded.
   assert.equal(patterns.filter((pattern) => pattern === '.gemini/').length, 1)
-  assert.ok(!patterns.some((pattern) => pattern.includes('codex')))
   // Only opencode.jsonc (actually written) is ignored, not opencode.json.
   assert.ok(!patterns.includes('opencode.json'))
   // .processkit/ is the only exclusive entry; everything else is shared.
@@ -712,8 +719,17 @@ test('manifest records exact ignore entries and status reports missing ones', ()
     readFileSync(path.join(root, '.processkit/install-manifest.json'), 'utf8'),
   )
   assert.deepEqual(manifest.gitignore, [
-    { pattern: '.cursor/', shared: true },
     { pattern: '.processkit/' },
+    { pattern: '.docskit/', shared: true },
+    { pattern: '.claude/', shared: true },
+    { pattern: '.cursor/', shared: true },
+    { pattern: '.codex/', shared: true },
+    { pattern: '.opencode/', shared: true },
+    { pattern: '.hermes/', shared: true },
+    { pattern: '.gemini/', shared: true },
+    { pattern: '.agents/', shared: true },
+    { pattern: '.kiro/', shared: true },
+    { pattern: '.kilocode/', shared: true },
   ])
 
   const healthy = harnessStatus(root)
@@ -734,18 +750,40 @@ test('deinit removes exclusive ignore entries but keeps shared multi-toolkit one
 
   const entries = generatedTargets(root, [path.join(root, '.cursor', 'mcp.json')])
   const merged = ensureGitignoreEntries(root, entries.map((entry) => entry.pattern))
-  assert.deepEqual(merged.added, ['.processkit/'], 'equivalent .cursor/ must not duplicate')
+  assert.deepEqual(merged.added, [
+    '.processkit/',
+    '.docskit/',
+    '.claude/',
+    '.codex/',
+    '.opencode/',
+    '.hermes/',
+    '.gemini/',
+    '.agents/',
+    '.kiro/',
+    '.kilocode/'
+  ], 'equivalent .cursor/ must not duplicate')
   installHarness({ projectRoot: root, type: 'fe', gitignoreEntries: entries })
 
   const dryRun = uninstallHarness({ projectRoot: root })
   assert.deepEqual(dryRun.gitignoreRemoved, ['.processkit/'])
-  assert.deepEqual(dryRun.gitignoreKept, ['.cursor/'])
+  assert.deepEqual(dryRun.gitignoreKept, [
+    '.docskit/',
+    '.claude/',
+    '.cursor/',
+    '.codex/',
+    '.opencode/',
+    '.hermes/',
+    '.gemini/',
+    '.agents/',
+    '.kiro/',
+    '.kilocode/'
+  ])
   assert.match(readFileSync(path.join(root, '.gitignore'), 'utf8'), /\.processkit/)
 
   const applied = uninstallHarness({ projectRoot: root, yes: true })
   assert.deepEqual(applied.gitignoreRemoved, ['.processkit/'])
   const after = readFileSync(path.join(root, '.gitignore'), 'utf8')
-  assert.equal(after, '# member\n.cursor/\nother-toolkit.local.json\n')
+  assert.equal(after, '# member\n.cursor/\nother-toolkit.local.json\n.docskit/\n.claude/\n.codex/\n.opencode/\n.hermes/\n.gemini/\n.agents/\n.kiro/\n.kilocode/\n')
 })
 
 test('CLI init merges gitignore from actual writes and re-init is idempotent', () => {
@@ -851,7 +889,8 @@ test('0.3.0 unnamespaced schema becomes stale and prune-safe on re-init', () => 
   assert.equal(existsSync(oldTarget), true)
 
   const status = harnessStatus(root)
-  assert.equal(status.packageVersionInstalled, '0.4.0')
+  const pkg = JSON.parse(readFileSync(path.resolve('package.json'), 'utf8'))
+  assert.equal(status.packageVersionInstalled, pkg.version)
   assert.ok(status.stale.includes(oldTarget))
   assert.ok(status.healthy.includes(newTarget))
 

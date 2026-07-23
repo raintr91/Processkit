@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { AGENT_DIRS } from './agents.js'
 
 /**
  * Shared `.gitignore` contract (Platform DNA semantics, vendored).
@@ -147,15 +148,17 @@ export function generatedTargets(
   writtenFiles: string[],
 ): OwnedGitignoreEntry[] {
   const root = path.resolve(projectRoot)
+  const allowedDirs = Array.from(new Set(Object.values(AGENT_DIRS).flat()))
   const entries: OwnedGitignoreEntry[] = [
-    // Unanchored style matches Platform DNA / Codegenkit (`.cursor/` not `/.cursor/`).
-    // Harness assets always land under .cursor/; other toolkits share the dir.
-    { pattern: '.cursor/', shared: true },
     // Install state is exclusively Processkit-owned.
     { pattern: '.processkit/' },
     // Docskit folder
     { pattern: '.docskit/', shared: true },
   ]
+
+  for (const dir of allowedDirs) {
+    entries.push({ pattern: `${dir}/`, shared: true })
+  }
 
   for (const written of writtenFiles) {
     // installAgents decorates secondary writes, e.g. ".../settings.json (permissions)".
@@ -168,7 +171,7 @@ export function generatedTargets(
     const posix = relative.split(path.sep).join('/')
     const top = posix.split('/')[0]!
     const pattern = posix.includes('/') ? `${top}/` : posix
-    if (pattern === '.cursor/' || pattern === '.processkit/') continue
+    if (allowedDirs.includes(pattern.replace(/\/$/, '')) || pattern === '.processkit/') continue
     entries.push({ pattern, shared: true })
   }
 

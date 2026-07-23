@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "package": "@platform/processkit",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "types": [
     "docs",
     "fe",
