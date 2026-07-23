@@ -140,7 +140,7 @@ function pruneEmptyDirs(root: string, files: string[]): void {
   }
   for (const directory of [...candidates].sort((a, b) => b.length - a.length)) {
     try {
-      if (readdirSync(directory).length === 0) rmSync(directory)
+      if (readdirSync(directory).length === 0) rmSync(directory, { recursive: true, force: true })
     } catch {
       // Directory is non-empty, missing, or not removable.
     }

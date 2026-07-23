@@ -153,6 +153,8 @@ export function generatedTargets(
     { pattern: '.cursor/', shared: true },
     // Install state is exclusively Processkit-owned.
     { pattern: '.processkit/' },
+    // Docskit folder
+    { pattern: '.docskit/', shared: true },
   ]
 
   for (const written of writtenFiles) {

@@ -1,10 +1,18 @@
 {
   "schemaVersion": 1,
   "package": "@platform/processkit",
-  "version": "0.4.1",
-  "types": ["docs", "fe", "be"],
+  "version": "0.4.2",
+  "types": [
+    "docs",
+    "fe",
+    "be"
+  ],
   "requires": [],
-  "optional": ["codegraph", "@platform/docskit", "@platform/artifactgraph"],
+  "optional": [
+    "codegraph",
+    "@platform/docskit",
+    "@platform/artifactgraph"
+  ],
   "tools": [
     "business_process_validate",
     "business_impact_validate",
@@ -16,8 +24,12 @@
       "business-impact-review",
       "flow-trace"
     ],
-    "fe": ["business-impact-review"],
-    "be": ["business-impact-review"]
+    "fe": [
+      "business-impact-review"
+    ],
+    "be": [
+      "business-impact-review"
+    ]
   },
   "compatibility": {
     "node": ">=22",

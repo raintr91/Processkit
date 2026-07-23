@@ -8,7 +8,7 @@
  * in cursor-mcp.ts.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
@@ -374,6 +374,8 @@ export function installAgents(opts: InstallAgentsOptions): InstallAgentsResult {
       const perm = mergeClaudePermissions(cwd)
       if (perm) written.push({ agent: 'claude', path: `${perm} (permissions)` })
     }
+    const skills = syncAgentSkills(agent, cwd)
+    if (skills) written.push({ agent, path: `${skills} (skills)` })
   }
 
   if (!opts.agents.length) skipped.push('no targets selected')
@@ -476,6 +478,57 @@ function removeClaudePermissions(cwd: string, dryRun: boolean): string | null {
   return settings
 }
 
+function syncAgentSkills(agent: AgentId, cwd: string): string | null {
+  if (agent === 'antigravity' || agent === 'gemini') {
+    const file = path.join(cwd, '.agents', 'skills.json')
+    let current: { entries?: { path: string }[], inherits?: { path: string }[], exclude?: string[] } = {}
+    if (existsSync(file)) {
+      try {
+        current = JSON.parse(readFileSync(file, 'utf8')) as typeof current
+      } catch {
+        current = {}
+      }
+    }
+    current.entries ??= []
+    const skillsPath = path.join('.cursor', 'skills').replaceAll('\\', '/')
+    if (!current.entries.some((e) => e.path === skillsPath)) {
+      current.entries.push({ path: skillsPath })
+      mkdirSync(path.dirname(file), { recursive: true })
+      writeFileSync(file, `${JSON.stringify(current, null, 2)}\n`, 'utf8')
+      return '.agents/skills.json'
+    }
+  }
+  return null
+}
+
+function unsyncAgentSkills(agent: AgentId, cwd: string, dryRun: boolean): string | null {
+  if (agent === 'antigravity' || agent === 'gemini') {
+    const file = path.join(cwd, '.agents', 'skills.json')
+    if (!existsSync(file)) return null
+    let current: { entries?: { path: string }[], inherits?: { path: string }[], exclude?: string[] } = {}
+    try {
+      current = JSON.parse(readFileSync(file, 'utf8')) as typeof current
+    } catch {
+      return null
+    }
+    if (!current.entries) return null
+    const skillsPath = path.join('.cursor', 'skills').replaceAll('\\', '/')
+    const filtered = current.entries.filter((e) => e.path !== skillsPath)
+    if (filtered.length < current.entries.length) {
+      if (!dryRun) {
+        current.entries = filtered
+        if (current.entries.length === 0 && (!current.inherits || current.inherits.length === 0) && (!current.exclude || current.exclude.length === 0)) {
+          rmSync(file, { force: true })
+        } else {
+          writeFileSync(file, `${JSON.stringify(current, null, 2)}\n`, 'utf8')
+        }
+      }
+      return '.agents/skills.json'
+    }
+  }
+  return null
+}
+
 function removeAgentConfig(agent: AgentId, cwd: string, dryRun: boolean): string | null {
   const file = agentConfigPath(agent, cwd)
   let removed: boolean
@@ -525,6 +578,8 @@ export function uninstallAgents(opts: UninstallAgentsOptions = {}): UninstallAge
         const perm = removeClaudePermissions(cwd, dryRun)
         if (perm) removed.push(`claude: ${perm} (permissions)`)
       }
+      const skills = unsyncAgentSkills(agent, cwd, dryRun)
+      if (skills) removed.push(`${agent}: ${skills} (skills)`)
     } else {
       absent.push(`${agent}: no ${MCP_NAME} entry`)
     }
